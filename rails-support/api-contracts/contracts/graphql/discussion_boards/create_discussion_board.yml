@@ -1,0 +1,247 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Create Discussion Board — CHANGED (moderation)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Create Discussion Board — CHANGED (moderation)
+  description: |-
+    EXISTING mutation, changed · Priority P1 · Rails model DiscussionBoard · stories 71–73.
+    One mutation, two meanings, found in bodhi today:
+    • with postId → a COMMENT on a community post (content area COMMUNITY) or on a feed/newsfeed post
+      (FEEDS / NEWSFEED — C9). Callers: CreateCommunityDiscussionRepo (social-community-discussion-list,
+      bodhi-newsfeed-discussion, socials-story-viewer).
+    • with packageId + courseId → a THREAD in a product discussion (content area PRODUCT_DISCUSSIONS),
+      sent to ai-server as content_type post. Caller: CreateDiscussionBoardRepo (Batch discussions).
+    "Comments are checked like the posts they sit under" (spec — Scope): the parent's content area and
+    settings apply. Same gates and check as createCommunityPost. Inputs unchanged; moderated inputs listed.
+  tags:
+    - moderation
+    - learner
+    - comments
+    - product-discussions
+    - changed-existing
+    - p1
+  side_effects:
+    - creates_discussion_board
+    - submits_moderation_check
+    - may_create_queue_item
+  idempotent: false
+graphql:
+  operation_type: mutation
+  operation_name: CreateDiscussionBoard
+  input_type: DiscussionBoardCreateInput
+  return_type: Existing return type of createDiscussionBoard (name unchanged) — gains moderationStatus and moderationNotice
+  example_document: |-
+    mutation CreateDiscussionBoard($input: DiscussionBoardCreateInput!) {
+      createDiscussionBoard(input: $input) {
+        id
+          message
+          title
+          attachmentUrl
+          postId
+          courseId
+          visibility
+          createdAt
+          user { id name profilePhotoFileName roleId }
+          moderationStatus
+          moderationNotice {
+            kind
+            ruleNumber
+            ruleName
+            ruleDescription
+            afterPublishing
+            supportMessage
+            helpline
+            updatedAt
+          }
+      }
+    }
+input:
+  fields:
+    - name: post_id
+      type: id
+      required: false
+      nullable: true
+      description: Existing input. Set when commenting on a community or feed post. The parent post decides the content area.
+      example: '5521'
+      default: null
+      depends_on:
+        operation: contracts/graphql/community_posts/list_community_posts
+        field_returned: id
+        pass_as: post_id
+        filter_hint: For feed posts the id comes from listSocialsNewsfeedPosts instead.
+    - name: package_id
+      type: integer
+      required: false
+      nullable: true
+      description: Existing input. The product for a product-discussion thread — becomes product_id; the product's type becomes product_type.
+      example: 314
+      default: null
+      min_value: 0
+    - name: course_id
+      type: integer
+      required: false
+      nullable: true
+      description: 'Existing input, unchanged.'
+      example: 314
+      default: null
+      min_value: 1
+    - name: title
+      type: string
+      required: false
+      nullable: true
+      description: Existing input (product-discussion threads). Moderated (title).
+      example: Doubt in chapter 4
+      default: null
+      min_length: 1
+    - name: message
+      type: string
+      required: true
+      nullable: false
+      description: Existing input. Moderated (body).
+      example: Can someone explain this?
+      min_length: 1
+    - name: attachment_url
+      type: string
+      required: false
+      nullable: true
+      description: 'Existing input. Moderated as the image (HLD §6: comments.attachment_url).'
+      example: null
+      default: null
+      format: url
+    - name: visibility
+      type: enum
+      required: false
+      nullable: true
+      description: 'Existing input, unchanged.'
+      example: public_discussion
+      default: null
+      enum_values:
+        - value: public_discussion
+          description: Existing value (DISCUSSION_VISIBILITY.PUBLIC).
+        - value: private_discussion
+          description: Existing value (DISCUSSION_VISIBILITY.PRIVATE).
+exclusive_field_groups:
+  - fields:
+      - post_id
+      - package_id
+    error_code: DISCUSSION_PARENT_REQUIRED
+    error_message: A discussion belongs to either a post or a product.
+response:
+  success:
+    http_status: 200
+    description: The created discussion plus moderationStatus and moderationNotice.
+    fields:
+      - name: id
+        type: id
+        nullable: false
+        description: Id of the written row.
+        example: '5521'
+        read_only: true
+      - name: moderation_status
+        type: enum
+        nullable: false
+        description: 'Where this content stands in moderation. Everyone except the author only ever receives PUBLISHED content; the author also receives their own HELD, REMOVED and BLOCKED content so they can see it still exists and why (stories 72, 73, 76).'
+        example: PUBLISHED
+        enum_values:
+          - value: PUBLISHED
+            description: 'Visible to everyone who can see this place. Covers content that passed the check, was published without a check (Unchecked), got Guidance or a Report-action flag, or was approved.'
+          - value: HELD
+            description: 'Exists but visible only to its author, marked Waiting for review — review-first content waiting for its verdict, a Hold rule, a restricted learner, a repeated post or a new learner''s first posts.'
+          - value: REMOVED
+            description: 'Taken down from the queue by a Teacher or Teaching Assistant. Visible only to its author, with the rule. Restorable for 90 days.'
+          - value: BLOCKED
+            description: 'Stopped by a Block rule after the content had been written (an AI verdict). Visible only to its author, with the rule. Never restorable. See open question C20.'
+      - name: moderation_notice
+        type: object
+        nullable: true
+        description: 'What the author should be told about this content. Returned ONLY to the author — null for every other viewer, and null when there is nothing to say (clean content, or a Report-action flag, where the learner is told nothing). The learner always sees the academy''s own rule wording, never machine-written text (system rule 8).'
+        example:
+          kind: BLOCKED
+          rule_number: 6
+          rule_name: No spam or advertising
+          rule_description: 'No promotions, advertising or selling of any kind.'
+          after_publishing: false
+          support_message: null
+          helpline: null
+          updated_at: '2026-09-30T10:15:00Z'
+        fields:
+          - name: kind
+            type: enum
+            nullable: false
+            description: Which message to show. Drives the learner-app copy.
+            example: BLOCKED
+            enum_values:
+              - value: WAITING_FOR_REVIEW
+                description: 'Content is HELD. Worded as a check, not a verdict. rule_* is filled when a Hold rule (or a flag waiting for a person) caused it; null while a review-first post waits for its verdict or when the learner is restricted.'
+              - value: GUIDANCE
+                description: Content is live but a Guidance rule matched — a gentle note naming the rule.
+              - value: BLOCKED
+                description: A Block rule stopped this content after it was written — names the rule and why (the rule description).
+              - value: REMOVED
+                description: A Teacher or Teaching Assistant removed this content — names the rule.
+              - value: APPROVED
+                description: 'A person approved content that was held — it is now live. Spec: after a decision the learner is always told.'
+              - value: SELF_HARM_SUPPORT
+                description: 'The rule involved is the self-harm rule. Never names the rule; carries the fixed support message and the helpline instead (spec, HLD §12).'
+          - name: rule_number
+            type: integer
+            nullable: true
+            description: 'The rule''s number in creation order, shown as "Rule 6". Null for SELF_HARM_SUPPORT and when no rule is involved.'
+            example: 6
+          - name: rule_name
+            type: string
+            nullable: true
+            description: The academy's own rule name. Null for SELF_HARM_SUPPORT and when no rule is involved.
+            example: No spam or advertising
+          - name: rule_description
+            type: string
+            nullable: true
+            description: 'The academy''s own rule description — the "why" shown to the learner. Never the AI''s reason sentence, which is admin-only.'
+            example: 'No promotions, advertising or selling of any kind.'
+          - name: after_publishing
+            type: boolean
+            nullable: false
+            description: True when other people could see the content before it came down (publish first). Lets the app say "taken down" instead of "can't be published" (story 76).
+            example: false
+          - name: support_message
+            type: string
+            nullable: true
+            description: Rails' fixed support message. Set only for SELF_HARM_SUPPORT. Who owns this text is open question C24.
+            example: null
+          - name: helpline
+            type: string
+            nullable: true
+            description: The helpline shown instead of a rule name. Set only for SELF_HARM_SUPPORT (story 78). Source of the helpline is open question C24.
+            example: null
+          - name: updated_at
+            type: datetime
+            nullable: false
+            description: When this notice last changed — lets the app show a decision once it lands.
+            example: '2026-09-30T10:15:00Z'
+  errors:
+    business_errors:
+      - code: CONTENT_BLOCKED
+        http_status: 200
+        graphql_extension_code: CONTENT_BLOCKED
+        message: 'Can''t be published — Rule 6: No spam or advertising. No promotions, advertising or selling of any kind. Edit your post and try again.'
+        description: 'Gate ② (local, no AI call): a blocked word or web address on a published rule matched, and the result is Block (spec flow: "blocked word or link → BLOCK"). Nothing is created — the learner is still in the composer (spec — What the learner sees). Rails still writes a moderation record (text, rule, author, time) for the Moderation log, restriction counts and reports (spec, system rule 11). extensions.moderation = { ruleNumber, ruleName, ruleDescription } — the academy''s own words; for the self-harm rule { supportMessage, helpline } and no rule (system rule 9). Whether a word on a Guidance/Report/Hold rule also blocks is open question C4; under Copilot, C6.'
+      - code: POSTING_BANNED
+        http_status: 200
+        graphql_extension_code: POSTING_BANNED
+        message: You can't post here right now.
+        description: 'The learner is banned from posting in this product or in the whole academy (stories 48–49). The ban never touches enrolment — they keep course access (system rule 14). extensions.moderation = { scope: PRODUCT | ACADEMY }.'
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid learner session token — same as every learner query today.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

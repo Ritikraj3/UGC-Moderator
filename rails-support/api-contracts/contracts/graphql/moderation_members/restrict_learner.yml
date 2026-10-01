@@ -1,0 +1,115 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Restrict Learner
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Restrict Learner
+  description: |-
+    NEW mutation · Priority P1 (Teacher, story 47), P2 (Teaching Assistant, story 55).
+    From the queue, beside the content that caused it (system rule 20). A restriction is always academy-wide
+    (system rule 13): every post the learner makes is held for review whatever the content review mode (system
+    rule 16), with no AI call (HLD §4). Not a ban.
+  tags:
+    - moderation
+    - admin
+    - restrictions
+    - p1
+  side_effects:
+    - restricts_learner
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: RestrictLearner
+  input_type: RestrictLearnerInput
+  return_type: RestrictLearnerPayload
+  example_document: |-
+    mutation RestrictLearner($input: RestrictLearnerInput!) {
+      restrictLearner(input: $input) {
+        message
+        restriction { id since source }
+      }
+    }
+input:
+  fields:
+    - name: user_id
+      type: id
+      required: true
+      nullable: false
+      description: The learner.
+      example: '9001'
+      depends_on:
+        operation: contracts/graphql/moderation_queue/list_moderation_queue_items
+        field_returned: learner
+        pass_as: user_id
+        ui_hint: learner.id of a queue item or member row.
+response:
+  success:
+    http_status: 200
+    description: Restricted.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: restriction
+        type: object
+        nullable: false
+        description: The restriction.
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Restriction id.
+            example: '40'
+            read_only: true
+          - name: since
+            type: datetime
+            nullable: false
+            description: Since.
+            example: '2026-09-30T11:00:00Z'
+          - name: source
+            type: enum
+            nullable: false
+            description: Teacher here.
+            example: TEACHER
+            enum_values:
+              - value: AUTOMATIC
+                description: The learner passed the academy's number of confirmed removals — the only automatic step.
+              - value: TEACHER
+                description: A Teacher or Teaching Assistant restricted the learner from the queue.
+  errors:
+    business_errors:
+      - code: LEARNER_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: LEARNER_NOT_FOUND
+        field: user_id
+        message: This learner no longer exists.
+        description: No learner with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: ALREADY_RESTRICTED
+        http_status: 200
+        graphql_extension_code: ALREADY_RESTRICTED
+        field: user_id
+        message: This learner is already restricted.
+        description: An active restriction exists.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: You do not have access to moderation.
+        description: Caller is neither a Teacher nor a Teaching Assistant of this academy. Moderation permissions are academy-wide (system rule 18).
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

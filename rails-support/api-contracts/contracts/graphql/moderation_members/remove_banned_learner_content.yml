@@ -1,0 +1,87 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Remove Banned Learner Content
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Remove Banned Learner Content
+  description: |-
+    NEW mutation · Priority P1 · story 50 · Teacher only.
+    One action clears what a banned learner posted within the ban's scope — the product for a PRODUCT ban,
+    everywhere for an ACADEMY ban. Each piece becomes REMOVED (restorable for 90 days, system rule 12) and is
+    recorded. The sources do not say whether these removals count toward a restriction or trigger outcome calls.
+  tags:
+    - moderation
+    - admin
+    - bans
+    - p1
+  side_effects:
+    - removes_content_in_bulk
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: RemoveBannedLearnerContent
+  input_type: RemoveBannedLearnerContentInput
+  return_type: RemoveBannedLearnerContentPayload
+  example_document: |-
+    mutation RemoveBannedLearnerContent($input: RemoveBannedLearnerContentInput!) {
+      removeBannedLearnerContent(input: $input) {
+        message
+        removedCount
+      }
+    }
+input:
+  fields:
+    - name: ban_id
+      type: id
+      required: true
+      nullable: false
+      description: The ban whose scope to clear.
+      example: '61'
+      depends_on:
+        operation: contracts/graphql/moderation_members/list_moderation_member_limits
+        field_returned: id
+        pass_as: ban_id
+        filter_hint: kind = BANNED
+response:
+  success:
+    http_status: 200
+    description: Removed.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: removed_count
+        type: integer
+        nullable: false
+        description: How many pieces of content were removed.
+        example: 14
+  errors:
+    business_errors:
+      - code: BAN_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: BAN_NOT_FOUND
+        field: ban_id
+        message: This ban no longer exists.
+        description: No ban with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

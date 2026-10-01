@@ -1,0 +1,192 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Moderation Problem Members
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Moderation Problem Members
+  description: |-
+    NEW query · Priority P1 · story 66.
+    "Learner, Posts written, Times their content was stopped, Content removed, Rule broken most often, Current
+    status" — repeat offenders without hunting for them.
+  tags:
+    - moderation
+    - admin
+    - reports
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListModerationProblemMembers
+  return_type: ModerationProblemMemberConnection
+  example_document: |-
+    query ListModerationProblemMembers($period: ModerationReportPeriodEnum!, $first: Int, $after: String) {
+      listModerationProblemMembers(period: $period, first: $first, after: $after) {
+        nodes { learner { id name profilePhotoFileName } postsWritten timesStopped contentRemoved mostBrokenRule { id number name } currentStatus }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: period
+      type: enum
+      required: true
+      nullable: false
+      description: 'Report period. The spec gives 7 or 30 days for rule performance; the other reports'' periods are not stated, so the same two are PROPOSED.'
+      example: LAST_30_DAYS
+      enum_values:
+        - value: LAST_7_DAYS
+          description: The last 7 days.
+        - value: LAST_30_DAYS
+          description: The last 30 days.
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: 'Members, most stopped first.'
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Rows.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: learner
+              type: object
+              nullable: false
+              description: '"Learner".'
+              example:
+                id: '9001'
+                name: Asha K
+                profile_photo_file_name: null
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: User id.
+                  example: '9001'
+                  read_only: true
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Display name.
+                  example: Asha K
+                - name: profile_photo_file_name
+                  type: string
+                  nullable: true
+                  description: 'Existing avatar field, as on posts today.'
+                  example: null
+            - name: posts_written
+              type: integer
+              nullable: false
+              description: '"Posts written".'
+              example: 48
+            - name: times_stopped
+              type: integer
+              nullable: false
+              description: '"Times their content was stopped".'
+              example: 9
+            - name: content_removed
+              type: integer
+              nullable: false
+              description: '"Content removed".'
+              example: 5
+            - name: most_broken_rule
+              type: object
+              nullable: true
+              description: '"Rule broken most often".'
+              example:
+                id: '42'
+                number: 6
+                name: No spam or advertising
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Rule id.
+                  example: '42'
+                  read_only: true
+                - name: number
+                  type: integer
+                  nullable: false
+                  description: Rule number in creation order.
+                  example: 6
+                - name: name
+                  type: string
+                  nullable: false
+                  description: The academy's rule name.
+                  example: No spam or advertising
+            - name: current_status
+              type: enum
+              nullable: false
+              description: '"Current status".'
+              example: RESTRICTED
+              enum_values:
+                - value: NONE
+                  description: No restriction or ban.
+                - value: RESTRICTED
+                  description: Restricted.
+                - value: BANNED
+                  description: Banned in at least one product or the whole academy.
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

@@ -1,0 +1,301 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Submit Moderation Check (Rails → ai-server)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Submit Moderation Check (Rails → ai-server)
+  description: |-
+    Priority P1 · HLD §4, §10 (Submit) · spec "How it works".
+    Rails calls this after gates ①–④ (moderation on? blocked word? repeat post? restricted?) have passed and
+    the content row has already been written — held under review first, live under publish first. ai-server
+    answers 202 with a receipt in milliseconds and never a verdict; the verdict arrives later on
+    POST /internal/v1/moderation/result. Nothing waits on this call: if it fails outright (ai-server down,
+    timeout, 5xx), Rails publishes the content and marks it Unchecked (HLD §9). Rails does NOT call this when
+    the content area is switched off, the moderation mode is AI disabled, the author is a Teacher or Teaching
+    Assistant, the author is restricted, the post is a repeat, or no effective rule has AI checking on.
+    ai-server is never told the rule's action, the moderation mode or the content review mode (HLD §10).
+  tags:
+    - moderation
+    - service-to-service
+    - rails-calls-ai-server
+    - p1
+  side_effects:
+    - queues_classification_job
+  idempotent: true
+rest:
+  method: POST
+  path: /api/moderation/check
+  auth: none
+input:
+  fields:
+    - name: idempotency_key
+      type: string
+      required: true
+      nullable: false
+      description: 'Built as {school_id}:{content_type}:{content_id}:{content_version}. A resubmit of the same key returns the same request_id instead of queueing a second job (HLD §10). Because content_id is Rails-opaque (see content_id), the key stays unique across all four Rails models.'
+      example: '81:post:Post-5521:1'
+      min_length: 7
+      max_length: 255
+    - name: trigger
+      type: enum
+      required: true
+      nullable: false
+      description: 'What happened to the content. Picks the lane — Rails states what happened, not how fast it wants an answer (HLD §10, §18).'
+      example: create
+      enum_values:
+        - value: create
+          description: The content was just created. Live lane.
+        - value: edit
+          description: 'The moderated fields changed (title, body or image). Live lane.'
+        - value: catchup
+          description: Re-checking content that was published without a check (Unchecked). Bulk lane. When Rails sends these is open question C22.
+    - name: school_id
+      type: integer
+      required: true
+      nullable: false
+      description: Which academy. Rails' school id.
+      example: 81
+      min_value: 1
+    - name: content_area
+      type: enum
+      required: true
+      nullable: false
+      description: Which of the four places the content was written in. This is what the academy configures (HLD §10). How each Rails model maps to an area is in rails-support/README.md §2 and open question C9.
+      example: community
+      enum_values:
+        - value: product_discussions
+          description: 'The discussion under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product.'
+        - value: community
+          description: Community posts and comments.
+        - value: feeds
+          description: Feed posts and comments.
+        - value: newsfeed
+          description: Newsfeed discussions.
+    - name: product_type
+      type: enum
+      required: false
+      nullable: true
+      description: 'Carried for reporting only (HLD §10). Set for product_discussions; null for community, feeds and newsfeed content, which does not sit inside a product (open question C9).'
+      example: null
+      default: null
+      enum_values:
+        - value: course
+          description: Course.
+        - value: batch
+          description: Batch.
+        - value: bundle
+          description: Bundle.
+        - value: mock_test
+          description: Mock test.
+        - value: test_series
+          description: Test series.
+        - value: ebook
+          description: Ebook.
+        - value: webinar
+          description: Webinar.
+        - value: free_resource
+          description: Free resource.
+        - value: podcast
+          description: Podcast.
+        - value: custom
+          description: Custom product.
+    - name: product_id
+      type: integer
+      required: false
+      nullable: true
+      description: Which product the content sits in. Context only — Rails has already resolved the rules (HLD §10). Null outside product_discussions.
+      example: null
+      default: null
+      min_value: 1
+    - name: content_type
+      type: enum
+      required: true
+      nullable: false
+      description: 'post or comment, as HLD §10 defines it. Mapping: Post, NewsfeedPost and a product-discussion DiscussionBoard thread → post; a DiscussionBoard on a post and every Comment reply → comment.'
+      example: post
+      enum_values:
+        - value: post
+          description: A top-level post or discussion thread.
+        - value: comment
+          description: A comment or reply under a post or thread.
+    - name: content_id
+      type: string
+      required: true
+      nullable: false
+      description: 'What is being checked. PROPOSED (open question C21): send a Rails-opaque id that names the model, e.g. "Post-5521", "NewsfeedPost-88", "DiscussionBoard-310", "Comment-77". The four Rails models have overlapping integer ids and content_type has only two values, so a bare integer would collide in idempotency_key and on the callback. ai-server treats the value as opaque and echoes it back.'
+      example: Post-5521
+      min_length: 1
+      max_length: 64
+    - name: content_version
+      type: integer
+      required: true
+      nullable: false
+      description: 'A counter Rails bumps whenever the moderated fields (title, body, image) change. Echoed on the callback so a verdict for text that has since been edited can be dropped (HLD §10).'
+      example: 1
+      min_value: 1
+    - name: title
+      type: string
+      required: false
+      nullable: true
+      description: 'The title, when the content has one. Optional when checking an image.'
+      example: Join XYZ Academy
+      default: null
+      max_length: 1000
+    - name: body
+      type: string
+      required: false
+      nullable: true
+      description: The text. Optional when checking an image; one of body or image_url is required.
+      example: 'Lower fees than your coaching, DM me'
+      default: null
+      min_length: 1
+    - name: image_url
+      type: string
+      required: false
+      nullable: true
+      description: 'An already-uploaded image — posts.featured_image, comments.attachment_url or comments.image. Checked with the post, not at upload (HLD §6).'
+      example: null
+      default: null
+      format: url
+    - name: school_context
+      type: string
+      required: true
+      nullable: false
+      description: 'A line or two describing the academy — type, audience, rough age, tone (HLD §10). Rails builds it from the academy description, learner age group and tone of conversation (story 6).'
+      example: 'NEET coaching academy. Learner age group: Under 18. Tone of conversation: Casual.'
+      min_length: 1
+      max_length: 2000
+    - name: context
+      type: array
+      required: false
+      nullable: false
+      description: 'The last few posts in the thread, so a pitch split across messages is caught (HLD §10). How many, and whether a comment check includes its parent post, is open item A4.'
+      example: []
+      default: []
+      min_items: 0
+      items:
+        type: string
+    - name: rules
+      type: array
+      required: true
+      nullable: false
+      description: 'The effective rules after exceptions have been applied (HLD §10, §13). Only rules the AI should judge — which rules that is (AI checking off? pinned to Copilot?) is open question C15. The model may only answer with one of these ids.'
+      example:
+        - id: '42'
+          name: No spam or advertising
+          description: 'No promotions, advertising or selling of any kind.'
+      min_items: 1
+      items:
+        type: object
+        fields:
+          - name: id
+            type: string
+            required: true
+            nullable: false
+            description: Rule id as Rails knows it. The verdict's rule_id must be one of these.
+            example: '42'
+            min_length: 1
+          - name: name
+            type: string
+            required: true
+            nullable: false
+            description: The academy's rule name.
+            example: No spam or advertising
+            min_length: 1
+          - name: description
+            type: string
+            required: true
+            nullable: false
+            description: The academy's plain-language description — what the AI judges against.
+            example: 'No promotions, advertising or selling of any kind.'
+            min_length: 1
+    - name: examples
+      type: array
+      required: false
+      nullable: false
+      description: 'Optional — this academy''s past decisions marked as examples (story 46): { text, rule_id, verdict }. How many are sent and who trims the list is open item A5.'
+      example: []
+      default: []
+      min_items: 0
+      items:
+        type: object
+        fields:
+          - name: text
+            type: string
+            required: true
+            nullable: false
+            description: The example content text.
+            example: Join my Telegram for free notes
+            min_length: 1
+          - name: rule_id
+            type: string
+            required: true
+            nullable: false
+            description: The rule the decision was about.
+            example: '42'
+            min_length: 1
+          - name: verdict
+            type: enum
+            required: true
+            nullable: false
+            description: What the Teacher decided. Value names are PROPOSED — HLD §10 names the field but not its values.
+            example: breaks_rule
+            enum_values:
+              - value: breaks_rule
+                description: The Teacher removed it — it breaks the rule.
+              - value: allowed
+                description: The Teacher approved it — it does not break the rule.
+rules:
+  - id: rule_body_or_image
+    description: 'HLD §10: "One of body or image required". A check with neither has nothing to classify.'
+    when: body is null and image_url is null
+    then: reject
+    error_code: BODY_OR_IMAGE_REQUIRED
+    error_message: 'Send body, image_url, or both.'
+    fields_involved:
+      - body
+      - image_url
+response:
+  success:
+    http_status: 202
+    description: 'Always 202 Accepted. No verdict on this response, ever, for any trigger (HLD §10). Rails stores request_id on its pending-check row — the callback is verified against that row.'
+    fields:
+      - name: status
+        type: enum
+        nullable: false
+        description: Always accepted.
+        example: accepted
+        enum_values:
+          - value: accepted
+            description: The check is queued.
+      - name: request_id
+        type: string
+        nullable: false
+        description: 'The receipt. Rails deduplicates the callback on it, and sends it back on the outcome call.'
+        example: b6f1c0de-7c1a-4e0a-9d3e-2f7a1b9c4e55
+  errors:
+    validation_errors:
+      - code: INVALID_REQUEST
+        http_status: 400
+        message: Request body failed validation.
+        description: Fastify JSON-schema validation failed — a missing required field or a wrong type. This is a contract bug on the Rails side; Rails treats it like a failed submit (publish + Unchecked).
+    auth_errors:
+      - code: FORBIDDEN
+        http_status: 403
+        message: Internal endpoint
+        description: 'checkInternalHost: the request did not arrive on ai-server''s internal host (ai-api.internal.learnyst.com). There is no token; network origin is the control (HLD §16).'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: ai-server error.
+        description: 'ai-server could not queue the job. Rails publishes the content and marks it Unchecked (HLD §9). Blocked words, repeat-post and restricted-member checks have already run.'
+ai_hints:
+  test_scenarios:
+    - name: resubmit_same_key
+      description: Send the same idempotency_key twice — both answers carry the same request_id and only one job is queued.
+    - name: no_body_no_image
+      description: Omit body and image_url — expect 400.
+    - name: wrong_host
+      description: Call on the public host — expect 403 Internal endpoint.

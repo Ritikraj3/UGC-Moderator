@@ -1,0 +1,184 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Moderation Product Activity
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Moderation Product Activity
+  description: |-
+    NEW query · Priority P1 · stories 64, 65.
+    "Product, Product type, Times content was stopped, Waiting for review, Removed, Wrong-flag rate" — the
+    products causing trouble. Only products with activity in the period (system rule 17). A row can open
+    createModerationException for that product (story 65, P2).
+  tags:
+    - moderation
+    - admin
+    - reports
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListModerationProductActivity
+  return_type: ModerationProductActivityConnection
+  example_document: |-
+    query ListModerationProductActivity($period: ModerationReportPeriodEnum!, $first: Int, $after: String) {
+      listModerationProductActivity(period: $period, first: $first, after: $after) {
+        nodes { product { id type name } timesStopped waitingForReview removed wrongFlagRate }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: period
+      type: enum
+      required: true
+      nullable: false
+      description: 'Report period. The spec gives 7 or 30 days for rule performance; the other reports'' periods are not stated, so the same two are PROPOSED.'
+      example: LAST_30_DAYS
+      enum_values:
+        - value: LAST_7_DAYS
+          description: The last 7 days.
+        - value: LAST_30_DAYS
+          description: The last 30 days.
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: Products with activity.
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Rows.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: product
+              type: object
+              nullable: false
+              description: '"Product" and "Product type".'
+              example:
+                id: '314'
+                type: COURSE
+                name: NEET Biology 2027
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Product id.
+                  example: '314'
+                  read_only: true
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Product type.
+                  example: COURSE
+                  enum_values:
+                    - value: COURSE
+                      description: Course.
+                    - value: BATCH
+                      description: Batch.
+                    - value: BUNDLE
+                      description: Bundle.
+                    - value: MOCK_TEST
+                      description: Mock test.
+                    - value: TEST_SERIES
+                      description: Test series.
+                    - value: EBOOK
+                      description: Ebook.
+                    - value: WEBINAR
+                      description: Webinar.
+                    - value: FREE_RESOURCE
+                      description: Free resource.
+                    - value: PODCAST
+                      description: Podcast.
+                    - value: CUSTOM
+                      description: Custom product.
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Product name.
+                  example: NEET Biology 2027
+            - name: times_stopped
+              type: integer
+              nullable: false
+              description: '"Times content was stopped".'
+              example: 12
+            - name: waiting_for_review
+              type: integer
+              nullable: false
+              description: '"Waiting for review".'
+              example: 2
+            - name: removed
+              type: integer
+              nullable: false
+              description: '"Removed".'
+              example: 5
+            - name: wrong_flag_rate
+              type: float
+              nullable: true
+              description: 'Content a rule stopped that a Teacher then approved, as a percentage. Null when nothing was stopped.'
+              example: 43
+              computed: true
+              computed_description: approved_after_stop / times_stopped × 100
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

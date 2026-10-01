@@ -1,0 +1,822 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Show Moderation Queue Item
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Show Moderation Queue Item
+  description: |-
+    NEW query · Priority P1 · stories 37, 38, 39 · spec "Three panes" and "The member panel".
+    Everything for the three panes: the item; the content in its thread (story 37); who wrote it — joined,
+    courses, posts written, past actions, current restriction (spec, story 38: "most decisions are about the
+    person"); every version of the content, so edit-back tricks are visible (story 39, spec); and its reports.
+    Past actions and versions come from PaperTrail (HLD §8, §13).
+  tags:
+    - moderation
+    - admin
+    - queue
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ShowModerationQueueItem
+  return_type: ModerationQueueItemDetail
+  example_document: |-
+    query ShowModerationQueueItem($id: ID!) {
+      showModerationQueueItem(id: $id) {
+        item {
+          id
+          content { type id title body imageUrl }
+          contentVersion
+          ruleBroken { id number name }
+          whyStopped { source reason matchedWord confidence }
+          learner { id name profilePhotoFileName }
+          product { id type name }
+          contentArea
+          status
+          contentModerationStatus
+          reportCount
+          editedAfterHeld
+          waitingSince
+          decidedAt
+          isExample
+        }
+        thread {
+          parent { type id title body authorName createdAt }
+          surrounding { type id body authorName createdAt }
+        }
+        member {
+          id
+          name
+          joinedAt
+          courses { id type name }
+          postsWritten
+          confirmedRemovals
+          isRestricted
+          bans { id scope product { id type name } since }
+          pastActions { action rule { id number name } doneBy occurredAt }
+        }
+        versions { version title body imageUrl editedAt }
+        reports { rule { id number name } note reportedAt }
+      }
+    }
+input:
+  fields:
+    - name: id
+      type: id
+      required: true
+      nullable: false
+      description: Queue item.
+      example: '3001'
+      depends_on:
+        operation: contracts/graphql/moderation_queue/list_moderation_queue_items
+        field_returned: id
+        pass_as: id
+response:
+  success:
+    http_status: 200
+    description: 'The item with its thread, member panel, versions and reports.'
+    fields:
+      - name: item
+        type: object
+        nullable: false
+        description: The queue item.
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Queue item id.
+            example: '3001'
+            read_only: true
+          - name: content
+            type: object
+            nullable: true
+            description: '"Content" (story 36).'
+            example:
+              type: COMMUNITY_POST
+              id: '5521'
+              title: Join XYZ Academy
+              body: 'Lower fees, DM me'
+              image_url: null
+            fields:
+              - name: type
+                type: enum
+                nullable: false
+                description: Which Rails model the content lives in.
+                example: COMMUNITY_POST
+                enum_values:
+                  - value: COMMUNITY_POST
+                    description: A community post — Rails Post + CommunityContent (createCommunityPost / updateCommunityPost).
+                  - value: NEWSFEED_POST
+                    description: A feed post — Rails NewsfeedPost (createNewsfeedPost / updateNewsfeedPost).
+                  - value: DISCUSSION
+                    description: A DiscussionBoard row — a comment on a community/feed post (postId) or a thread in a product discussion (packageId/courseId).
+                  - value: DISCUSSION_REPLY
+                    description: A Comment row — a reply under a DiscussionBoard (createComment / updateComment).
+              - name: id
+                type: id
+                nullable: false
+                description: Id in that model.
+                example: '5521'
+                read_only: true
+              - name: title
+                type: string
+                nullable: true
+                description: 'Title, when the content has one.'
+                example: Join XYZ Academy
+              - name: body
+                type: string
+                nullable: true
+                description: The text as the learner wrote it (the version under review).
+                example: 'Lower fees, DM me'
+              - name: image_url
+                type: string
+                nullable: true
+                description: 'The uploaded image, if any (posts.featured_image, comments.attachment_url, comments.image).'
+                example: null
+          - name: content_version
+            type: integer
+            nullable: false
+            description: The version under review.
+            example: 2
+          - name: rule_broken
+            type: object
+            nullable: true
+            description: '"Rule broken" (story 36). Null for UNCHECKED items and repeat/restricted holds.'
+            example:
+              id: '42'
+              number: 6
+              name: No spam or advertising
+            fields:
+              - name: id
+                type: id
+                nullable: false
+                description: Rule id.
+                example: '42'
+                read_only: true
+              - name: number
+                type: integer
+                nullable: false
+                description: Rule number in creation order.
+                example: 6
+              - name: name
+                type: string
+                nullable: false
+                description: The academy's rule name.
+                example: No spam or advertising
+          - name: why_stopped
+            type: object
+            nullable: false
+            description: '"Why it was stopped" (story 36).'
+            example:
+              source: AI_CHECK
+              reason: 'Links to an outside site offering a discount, which reads as advertising'
+              matched_word: null
+              confidence: HIGH
+            fields:
+              - name: source
+                type: enum
+                nullable: false
+                description: What stopped it.
+                example: AI_CHECK
+                enum_values:
+                  - value: AI_CHECK
+                    description: The AI check named a rule. reason holds the AI's sentence (admin-only).
+                  - value: BLOCKED_WORD
+                    description: 'A blocked word or web address on the rule matched (local, no AI call).'
+                  - value: LEARNER_REPORT
+                    description: One or more learners reported it.
+                  - value: REPEAT_POST
+                    description: 'Repeated content inside the academy''s spam window (local, no AI call).'
+                  - value: RESTRICTED_MEMBER
+                    description: 'The author is restricted, so everything they post is held (local, no AI call).'
+                  - value: FIRST_POSTS_HOLD
+                    description: 'One of a new learner''s first posts, held by the academy setting.'
+                  - value: UNCHECKED
+                    description: 'No verdict arrived before the deadline, or ai-server returned status error.'
+              - name: reason
+                type: string
+                nullable: true
+                description: 'The AI''s generated reason — shown in the queue row, never to a learner (HLD §12).'
+                example: 'Links to an outside site offering a discount, which reads as advertising'
+              - name: matched_word
+                type: string
+                nullable: true
+                description: 'The blocked word that matched, for BLOCKED_WORD.'
+                example: null
+              - name: confidence
+                type: enum
+                nullable: true
+                description: 'The AI''s confidence, for AI_CHECK.'
+                example: HIGH
+                enum_values:
+                  - value: LOW
+                    description: Low.
+                  - value: MEDIUM
+                    description: Medium.
+                  - value: HIGH
+                    description: High.
+          - name: learner
+            type: object
+            nullable: false
+            description: The learner who wrote the content.
+            example:
+              id: '9001'
+              name: Asha K
+              profile_photo_file_name: null
+            fields:
+              - name: id
+                type: id
+                nullable: false
+                description: User id.
+                example: '9001'
+                read_only: true
+              - name: name
+                type: string
+                nullable: false
+                description: Display name.
+                example: Asha K
+              - name: profile_photo_file_name
+                type: string
+                nullable: true
+                description: 'Existing avatar field, as on posts today.'
+                example: null
+          - name: product
+            type: object
+            nullable: true
+            description: 'The product the content sits in. Null for Community, Feeds and Newsfeed content.'
+            example:
+              id: '314'
+              type: COURSE
+              name: NEET Biology 2027
+            fields:
+              - name: id
+                type: id
+                nullable: false
+                description: Product id.
+                example: '314'
+                read_only: true
+              - name: type
+                type: enum
+                nullable: false
+                description: Product type.
+                example: COURSE
+                enum_values:
+                  - value: COURSE
+                    description: Course.
+                  - value: BATCH
+                    description: Batch.
+                  - value: BUNDLE
+                    description: Bundle.
+                  - value: MOCK_TEST
+                    description: Mock test.
+                  - value: TEST_SERIES
+                    description: Test series.
+                  - value: EBOOK
+                    description: Ebook.
+                  - value: WEBINAR
+                    description: Webinar.
+                  - value: FREE_RESOURCE
+                    description: Free resource.
+                  - value: PODCAST
+                    description: Podcast.
+                  - value: CUSTOM
+                    description: Custom product.
+              - name: name
+                type: string
+                nullable: false
+                description: Product name.
+                example: NEET Biology 2027
+          - name: content_area
+            type: enum
+            nullable: false
+            description: '"Where it is" (story 36).'
+            example: COMMUNITY
+            enum_values:
+              - value: PRODUCT_DISCUSSIONS
+                description: 'The discussion under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product (spec — Scope).'
+              - value: COMMUNITY
+                description: Community posts and their comments (spec — Scope).
+              - value: FEEDS
+                description: Feed posts and their comments (spec — Scope).
+              - value: NEWSFEED
+                description: Newsfeed discussions (spec — Scope).
+          - name: status
+            type: enum
+            nullable: false
+            description: '"Status" (story 36).'
+            example: PENDING
+            enum_values:
+              - value: PENDING
+                description: Waiting for a person.
+              - value: APPROVED
+                description: A person let it through — it is live.
+              - value: REMOVED
+                description: A person took it down — restorable for 90 days.
+          - name: content_moderation_status
+            type: enum
+            nullable: false
+            description: 'What learners currently see — held, live or removed.'
+            example: HELD
+            enum_values:
+              - value: PUBLISHED
+                description: 'Visible to everyone who can see this place. Covers content that passed the check, was published without a check (Unchecked), got Guidance or a Report-action flag, or was approved.'
+              - value: HELD
+                description: 'Exists but visible only to its author, marked Waiting for review — review-first content waiting for its verdict, a Hold rule, a restricted learner, a repeated post or a new learner''s first posts.'
+              - value: REMOVED
+                description: 'Taken down from the queue by a Teacher or Teaching Assistant. Visible only to its author, with the rule. Restorable for 90 days.'
+              - value: BLOCKED
+                description: 'Stopped by a Block rule after the content had been written (an AI verdict). Visible only to its author, with the rule. Never restorable. See open question C20.'
+          - name: report_count
+            type: integer
+            nullable: false
+            description: Learner reports on this content. Rails counts reports per post (HLD §7).
+            example: 0
+          - name: edited_after_held
+            type: boolean
+            nullable: false
+            description: Flagged "edited after being held" — sent to the back of the queue (spec).
+            example: false
+          - name: waiting_since
+            type: datetime
+            nullable: false
+            description: When it started waiting. "Waiting time" = now − waiting_since (story 36).
+            example: '2026-09-30T09:30:00Z'
+          - name: decided_at
+            type: datetime
+            nullable: true
+            description: When a person decided.
+            example: null
+          - name: is_example
+            type: boolean
+            nullable: false
+            description: Marked as an example (story 46).
+            example: false
+      - name: thread
+        type: object
+        nullable: false
+        description: The content in its thread (story 37).
+        example: {}
+        fields:
+          - name: parent
+            type: object
+            nullable: true
+            description: The post a comment sits under; null for a top-level post.
+            example: null
+            fields:
+              - name: type
+                type: enum
+                nullable: false
+                description: Model.
+                example: COMMUNITY_POST
+                enum_values:
+                  - value: COMMUNITY_POST
+                    description: A community post — Rails Post + CommunityContent (createCommunityPost / updateCommunityPost).
+                  - value: NEWSFEED_POST
+                    description: A feed post — Rails NewsfeedPost (createNewsfeedPost / updateNewsfeedPost).
+                  - value: DISCUSSION
+                    description: A DiscussionBoard row — a comment on a community/feed post (postId) or a thread in a product discussion (packageId/courseId).
+                  - value: DISCUSSION_REPLY
+                    description: A Comment row — a reply under a DiscussionBoard (createComment / updateComment).
+              - name: id
+                type: id
+                nullable: false
+                description: Id.
+                example: '5521'
+                read_only: true
+              - name: title
+                type: string
+                nullable: true
+                description: Title.
+                example: Notes for chapter 4
+              - name: body
+                type: string
+                nullable: true
+                description: Text.
+                example: Sharing my notes
+              - name: author_name
+                type: string
+                nullable: false
+                description: Author.
+                example: Ravi
+              - name: created_at
+                type: datetime
+                nullable: false
+                description: Posted at.
+                example: '2026-09-30T08:00:00Z'
+          - name: surrounding
+            type: array
+            nullable: false
+            description: The nearby messages in the thread. How many is not stated in the sources.
+            example: []
+            items:
+              type: object
+              fields:
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Model.
+                  example: DISCUSSION
+                  enum_values:
+                    - value: COMMUNITY_POST
+                      description: A community post — Rails Post + CommunityContent (createCommunityPost / updateCommunityPost).
+                    - value: NEWSFEED_POST
+                      description: A feed post — Rails NewsfeedPost (createNewsfeedPost / updateNewsfeedPost).
+                    - value: DISCUSSION
+                      description: A DiscussionBoard row — a comment on a community/feed post (postId) or a thread in a product discussion (packageId/courseId).
+                    - value: DISCUSSION_REPLY
+                      description: A Comment row — a reply under a DiscussionBoard (createComment / updateComment).
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Id.
+                  example: '309'
+                  read_only: true
+                - name: body
+                  type: string
+                  nullable: true
+                  description: Text.
+                  example: Thanks!
+                - name: author_name
+                  type: string
+                  nullable: false
+                  description: Author.
+                  example: Meera
+                - name: created_at
+                  type: datetime
+                  nullable: false
+                  description: Posted at.
+                  example: '2026-09-30T08:05:00Z'
+      - name: member
+        type: object
+        nullable: false
+        description: 'The member panel (spec, story 38).'
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: User id.
+            example: '9001'
+            read_only: true
+          - name: name
+            type: string
+            nullable: false
+            description: Name.
+            example: Asha K
+          - name: joined_at
+            type: datetime
+            nullable: false
+            description: '"joined".'
+            example: '2026-01-10T00:00:00Z'
+          - name: courses
+            type: array
+            nullable: false
+            description: '"courses" — their enrolments.'
+            example: []
+            items:
+              type: object
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Product id.
+                  example: '314'
+                  read_only: true
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Type.
+                  example: COURSE
+                  enum_values:
+                    - value: COURSE
+                      description: Course.
+                    - value: BATCH
+                      description: Batch.
+                    - value: BUNDLE
+                      description: Bundle.
+                    - value: MOCK_TEST
+                      description: Mock test.
+                    - value: TEST_SERIES
+                      description: Test series.
+                    - value: EBOOK
+                      description: Ebook.
+                    - value: WEBINAR
+                      description: Webinar.
+                    - value: FREE_RESOURCE
+                      description: Free resource.
+                    - value: PODCAST
+                      description: Podcast.
+                    - value: CUSTOM
+                      description: Custom product.
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Name.
+                  example: NEET Biology 2027
+          - name: posts_written
+            type: integer
+            nullable: false
+            description: '"posts written".'
+            example: 48
+          - name: confirmed_removals
+            type: integer
+            nullable: false
+            description: Removals that count toward a restriction (system rule 10).
+            example: 2
+          - name: is_restricted
+            type: boolean
+            nullable: false
+            description: '"current restriction".'
+            example: false
+          - name: bans
+            type: array
+            nullable: false
+            description: Active bans.
+            example: []
+            items:
+              type: object
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Ban id.
+                  example: '61'
+                  read_only: true
+                - name: scope
+                  type: enum
+                  nullable: false
+                  description: Scope.
+                  example: PRODUCT
+                  enum_values:
+                    - value: PRODUCT
+                      description: Banned from posting in one product.
+                    - value: ACADEMY
+                      description: Banned from posting anywhere in the academy. Replaces any product ban.
+                - name: product
+                  type: object
+                  nullable: true
+                  description: Product for a PRODUCT ban.
+                  example:
+                    id: '314'
+                    type: COURSE
+                    name: NEET Biology 2027
+                  fields:
+                    - name: id
+                      type: id
+                      nullable: false
+                      description: Product id.
+                      example: '314'
+                      read_only: true
+                    - name: type
+                      type: enum
+                      nullable: false
+                      description: Product type.
+                      example: COURSE
+                      enum_values:
+                        - value: COURSE
+                          description: Course.
+                        - value: BATCH
+                          description: Batch.
+                        - value: BUNDLE
+                          description: Bundle.
+                        - value: MOCK_TEST
+                          description: Mock test.
+                        - value: TEST_SERIES
+                          description: Test series.
+                        - value: EBOOK
+                          description: Ebook.
+                        - value: WEBINAR
+                          description: Webinar.
+                        - value: FREE_RESOURCE
+                          description: Free resource.
+                        - value: PODCAST
+                          description: Podcast.
+                        - value: CUSTOM
+                          description: Custom product.
+                    - name: name
+                      type: string
+                      nullable: false
+                      description: Product name.
+                      example: NEET Biology 2027
+                - name: since
+                  type: datetime
+                  nullable: false
+                  description: Since.
+                  example: '2026-09-29T09:00:00Z'
+          - name: past_actions
+            type: array
+            nullable: false
+            description: '"past actions" — their moderation history (story 38).'
+            example: []
+            items:
+              type: object
+              fields:
+                - name: action
+                  type: enum
+                  nullable: false
+                  description: What happened.
+                  example: CONTENT_REMOVED
+                  enum_values:
+                    - value: CONTENT_BLOCKED
+                      description: 'Content stopped and never created (blocked word), or blocked after writing.'
+                    - value: CONTENT_HELD
+                      description: Content held for review.
+                    - value: CONTENT_GUIDANCE
+                      description: Guidance shown on live content.
+                    - value: CONTENT_FLAGGED
+                      description: 'Content sent to the queue while live (Report action, Copilot).'
+                    - value: CONTENT_UNCHECKED
+                      description: Content published without a check.
+                    - value: CONTENT_REPORTED
+                      description: A learner reported content.
+                    - value: CONTENT_APPROVED
+                      description: A person approved content.
+                    - value: CONTENT_REMOVED
+                      description: A person removed content.
+                    - value: CONTENT_RESTORED
+                      description: A person restored removed content.
+                    - value: EXAMPLE_MARKED
+                      description: A decided item was marked as an example.
+                    - value: LEARNER_RESTRICTED
+                      description: A learner was restricted.
+                    - value: RESTRICTION_LIFTED
+                      description: A restriction was lifted.
+                    - value: LEARNER_BANNED
+                      description: A learner was banned.
+                    - value: BAN_LIFTED
+                      description: A ban was lifted.
+                    - value: RULE_CREATED
+                      description: A rule was created.
+                    - value: RULE_UPDATED
+                      description: A rule was reworded or re-actioned.
+                    - value: RULE_PUBLISHED
+                      description: A rule was published.
+                    - value: RULE_UNPUBLISHED
+                      description: A rule was unpublished.
+                    - value: RULE_DELETED
+                      description: A rule was deleted.
+                    - value: BLOCKED_WORD_ADDED
+                      description: A blocked word was added.
+                    - value: BLOCKED_WORD_UPDATED
+                      description: A blocked word was changed.
+                    - value: BLOCKED_WORD_DELETED
+                      description: A blocked word was deleted.
+                    - value: SETTINGS_CHANGED
+                      description: A moderation setting or mode changed.
+                    - value: EXCEPTION_ADDED
+                      description: A product exception was added.
+                    - value: EXCEPTION_CHANGED
+                      description: A product exception was changed.
+                    - value: EXCEPTION_REMOVED
+                      description: A product exception was removed.
+                - name: rule
+                  type: object
+                  nullable: true
+                  description: The rule involved.
+                  example:
+                    id: '42'
+                    number: 6
+                    name: No spam or advertising
+                  fields:
+                    - name: id
+                      type: id
+                      nullable: false
+                      description: Rule id.
+                      example: '42'
+                      read_only: true
+                    - name: number
+                      type: integer
+                      nullable: false
+                      description: Rule number in creation order.
+                      example: 6
+                    - name: name
+                      type: string
+                      nullable: false
+                      description: The academy's rule name.
+                      example: No spam or advertising
+                - name: done_by
+                  type: enum
+                  nullable: false
+                  description: Who did it.
+                  example: TEACHER
+                  enum_values:
+                    - value: AI
+                      description: The AI check (via ai-server).
+                    - value: TEACHER
+                      description: A Teacher / Admin.
+                    - value: TEACHING_ASSISTANT
+                      description: A Teaching Assistant.
+                    - value: LEARNER
+                      description: A learner (reports).
+                    - value: SYSTEM
+                      description: 'Rails itself — blocked words, repeat posts, deadlines, the restriction threshold.'
+                - name: occurred_at
+                  type: datetime
+                  nullable: false
+                  description: When.
+                  example: '2026-09-20T10:00:00Z'
+      - name: versions
+        type: array
+        nullable: false
+        description: 'Every version of the content, oldest first (story 39).'
+        example: []
+        items:
+          type: object
+          fields:
+            - name: version
+              type: integer
+              nullable: false
+              description: content_version.
+              example: 1
+            - name: title
+              type: string
+              nullable: true
+              description: Title at that version.
+              example: Join XYZ
+            - name: body
+              type: string
+              nullable: true
+              description: Text at that version.
+              example: 'Lower fees, DM me'
+            - name: image_url
+              type: string
+              nullable: true
+              description: Image at that version.
+              example: null
+            - name: edited_at
+              type: datetime
+              nullable: false
+              description: When.
+              example: '2026-09-30T09:30:00Z'
+      - name: reports
+        type: array
+        nullable: false
+        description: Learner reports on it.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: rule
+              type: object
+              nullable: false
+              description: The rule the learner picked.
+              example:
+                id: '42'
+                number: 6
+                name: No spam or advertising
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Rule id.
+                  example: '42'
+                  read_only: true
+                - name: number
+                  type: integer
+                  nullable: false
+                  description: Rule number in creation order.
+                  example: 6
+                - name: name
+                  type: string
+                  nullable: false
+                  description: The academy's rule name.
+                  example: No spam or advertising
+            - name: note
+              type: string
+              nullable: true
+              description: The learner's note.
+              example: null
+            - name: reported_at
+              type: datetime
+              nullable: false
+              description: When.
+              example: '2026-09-30T09:40:00Z'
+  errors:
+    business_errors:
+      - code: QUEUE_ITEM_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: QUEUE_ITEM_NOT_FOUND
+        field: id
+        message: This queue item no longer exists.
+        description: No queue item with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: You do not have access to moderation.
+        description: Caller is neither a Teacher nor a Teaching Assistant of this academy. Moderation permissions are academy-wide (system rule 18).
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

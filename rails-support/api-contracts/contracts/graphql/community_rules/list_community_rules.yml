@@ -1,0 +1,137 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Community Rules (learner) — NEW
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Community Rules (learner) — NEW
+  description: |-
+    NEW query · Priority P1 · stories 70, 80, 34 · spec "Rules" · HLD §12, §16.
+    The academy's PUBLISHED rules, for the "community rules" view before posting (story 70) and as the reason
+    picker in the report form (story 80, "Rule broken*"). Draft rules are never returned. A rule with neither
+    blocked words nor AI checking is still returned — it exists as a report reason (spec). Blocked words are
+    NEVER returned to learners (HLD §16: the list would be readable in devtools).
+    When productId is sent, rules an exception switched off for that product are left out (stories 11, 13).
+  tags:
+    - moderation
+    - learner
+    - rules
+    - new
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListCommunityRules
+  return_type: CommunityRuleConnection
+  example_document: |-
+    query ListCommunityRules($productId: Int, $first: Int, $after: String) {
+      listCommunityRules(productId: $productId, first: $first, after: $after) {
+        nodes { id number name description reportReason }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: product_id
+      type: integer
+      required: false
+      nullable: true
+      description: 'Optional. The product the learner is in, so rules an exception switched off there are left out. Null → the academy''s rules.'
+      example: null
+      default: null
+      min_value: 1
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: Published rules in rule-number order.
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Published rules.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: Rule id.
+              example: '42'
+              read_only: true
+            - name: number
+              type: integer
+              nullable: false
+              description: Rule number in creation order — shown as "Rule 6".
+              example: 6
+            - name: name
+              type: string
+              nullable: false
+              description: The academy's rule name.
+              example: No spam or advertising
+            - name: description
+              type: string
+              nullable: false
+              description: The academy's plain-language description.
+              example: 'No promotions, advertising or selling of any kind.'
+            - name: report_reason
+              type: string
+              nullable: true
+              description: The wording learners see when reporting under this rule (story 34). Falls back to name when not set.
+              example: Spam or advertising
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid learner session token — same as every learner query today.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

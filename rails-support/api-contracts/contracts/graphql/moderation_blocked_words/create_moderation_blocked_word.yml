@@ -1,0 +1,139 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Create Moderation Blocked Word
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Create Moderation Blocked Word
+  description: |-
+    NEW mutation · Priority P1 · story 26 ("Word or web address*") · Teacher only.
+    Adds a word or web address to a rule. Content containing it is stopped on sight with no AI call, naming the
+    same rule as an AI catch would (system rule 7). One entry covers disguises (1d10t, id**t, IDIOT, i d i o t);
+    a web address covers its subpages (rivalacademy.com → www.rivalacademy.com/neet). Every edit is logged ("word-list edits").
+  tags:
+    - moderation
+    - admin
+    - blocked-words
+    - p1
+  side_effects:
+    - creates_blocked_word
+    - writes_moderation_log
+  idempotent: false
+graphql:
+  operation_type: mutation
+  operation_name: CreateModerationBlockedWord
+  input_type: CreateModerationBlockedWordInput
+  return_type: CreateModerationBlockedWordPayload
+  example_document: |-
+    mutation CreateModerationBlockedWord($input: CreateModerationBlockedWordInput!) {
+      createModerationBlockedWord(input: $input) {
+        message
+        blockedWord { id value kind addedBy createdAt }
+      }
+    }
+input:
+  fields:
+    - name: rule_id
+      type: id
+      required: true
+      nullable: false
+      description: The rule it belongs to — there is no word without a rule (story notes).
+      example: '42'
+      depends_on:
+        operation: contracts/graphql/moderation_rules/list_moderation_rules
+        field_returned: id
+        pass_as: rule_id
+    - name: value
+      type: string
+      required: true
+      nullable: false
+      description: '"Word or web address*".'
+      example: rivalacademy.com
+      min_length: 1
+      max_length: 255
+response:
+  success:
+    http_status: 200
+    description: The new word.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: blocked_word
+        type: object
+        nullable: false
+        description: The word.
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Blocked word id.
+            example: '900'
+            read_only: true
+          - name: value
+            type: string
+            nullable: false
+            description: '"Word or web address" — stored as a normal word; the matching handles disguises (spec).'
+            example: rivalacademy.com
+          - name: kind
+            type: enum
+            nullable: false
+            description: Word or web address — derived from the value.
+            example: WEB_ADDRESS
+            enum_values:
+              - value: WORD
+                description: 'A word — matched through disguises (1d10t, id**t, IDIOT, i d i o t).'
+              - value: WEB_ADDRESS
+                description: A web address — rivalacademy.com also covers www.rivalacademy.com/neet.
+            computed: true
+            computed_description: A value that parses as a domain or URL is a WEB_ADDRESS.
+          - name: added_by
+            type: enum
+            nullable: false
+            description: '"Added by" — Learnyst or Academy (story 27).'
+            example: ACADEMY
+            enum_values:
+              - value: LEARNYST
+                description: Pre-filled by Learnyst.
+              - value: ACADEMY
+                description: Added by the academy.
+          - name: created_at
+            type: datetime
+            nullable: false
+            description: When added.
+            example: '2026-09-10T12:00:00Z'
+  errors:
+    business_errors:
+      - code: RULE_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: RULE_NOT_FOUND
+        field: rule_id
+        message: This rule no longer exists.
+        description: No rule with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: DUPLICATE_BLOCKED_WORD
+        http_status: 200
+        graphql_extension_code: DUPLICATE_BLOCKED_WORD
+        field: value
+        message: That word is already on this rule.
+        description: The normalised value already exists on the rule.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

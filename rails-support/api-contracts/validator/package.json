@@ -1,0 +1,12 @@
+{
+  "name": "api-contracts",
+  "version": "1.0.0",
+  "description": "AI-first API contract validation tooling",
+  "private": true,
+  "scripts": {
+    "validate": "node validate.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

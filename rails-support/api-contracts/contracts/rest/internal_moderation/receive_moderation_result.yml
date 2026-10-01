@@ -1,0 +1,203 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Receive Moderation Result (ai-server → Rails webhook)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Receive Moderation Result (ai-server → Rails webhook)
+  description: |-
+    Priority P1 · HLD §4, §9, §10 (Callback), §16 · NEW Rails endpoint, under the /internal/v1 namespace
+    on the internal Rails host (same routing constraint as /internal/v1/ai_ingest/lesson_result).
+    ai-server posts the verdict about a second after the submit. Rails must:
+    1. verify the shared service token (HLD §16 — NEW: today's /internal/v1 callbacks are authless; see open question C26);
+    2. find the pending-check row it created for request_id — unknown request_id → drop;
+    3. dedupe on request_id — delivery is at-least-once;
+    4. drop the verdict if content_version is no longer current (two rapid edits make two in-flight jobs);
+    5. apply it: status error → Unchecked; breaks_rule false → publish held content / leave live content;
+       breaks_rule true → the rule's action under the effective moderation mode (Autopilot applies it,
+       Copilot and pinned rules queue it for a person);
+    6. answer 200 to stop retries. A verdict that arrives after the deadline is still applied (HLD §9).
+    Rails decides everything about enforcement; ai-server only says which rule broke and why (HLD §10).
+  tags:
+    - moderation
+    - service-to-service
+    - ai-server-calls-rails
+    - webhook
+    - p1
+  side_effects:
+    - publishes_or_holds_or_blocks_content
+    - creates_queue_item
+    - writes_moderation_log
+    - updates_learner_notice
+  idempotent: true
+rest:
+  method: POST
+  path: /internal/v1/moderation/result
+  auth: bearer_token
+input:
+  fields:
+    - name: request_id
+      type: string
+      required: true
+      nullable: false
+      description: The id from the 202. Rails deduplicates on it and must find a pending-check row it created; an unknown request_id is dropped (HLD §16).
+      example: b6f1c0de-7c1a-4e0a-9d3e-2f7a1b9c4e55
+      min_length: 1
+    - name: school_id
+      type: integer
+      required: true
+      nullable: false
+      description: Echoed back exactly as sent.
+      example: 81
+      min_value: 1
+    - name: content_type
+      type: enum
+      required: true
+      nullable: false
+      description: Echoed back exactly as sent.
+      example: post
+      enum_values:
+        - value: post
+          description: Echo of the submit value.
+        - value: comment
+          description: Echo of the submit value.
+    - name: content_id
+      type: string
+      required: true
+      nullable: false
+      description: 'Echoed back exactly as sent (Rails-opaque, see C21).'
+      example: Post-5521
+      min_length: 1
+      max_length: 64
+    - name: content_version
+      type: integer
+      required: true
+      nullable: false
+      description: The version this verdict judged. Rails drops the verdict if the content has been edited since.
+      example: 1
+      min_value: 1
+    - name: trigger
+      type: enum
+      required: true
+      nullable: false
+      description: Echoed back exactly as sent.
+      example: create
+      enum_values:
+        - value: create
+          description: The content was just created. Live lane.
+        - value: edit
+          description: 'The moderated fields changed (title, body or image). Live lane.'
+        - value: catchup
+          description: Re-checking content that was published without a check (Unchecked). Bulk lane. When Rails sends these is open question C22.
+    - name: status
+      type: enum
+      required: true
+      nullable: false
+      description: Lets Rails tell "clean" from "couldn't check" (HLD §10).
+      example: ok
+      enum_values:
+        - value: ok
+          description: The check ran. Read breaks_rule.
+        - value: error
+          description: The model failed twice or returned invalid JSON. Rails treats the content as Unchecked (HLD §9).
+    - name: breaks_rule
+      type: boolean
+      required: true
+      nullable: false
+      description: Whether a rule broke. false with status ok means clean.
+      example: true
+    - name: rule_id
+      type: string
+      required: false
+      nullable: true
+      description: 'Which rule — null when clean. Must be one Rails sent; an id Rails did not send is treated as no match (HLD §11). If more than one broke, the most severe — Block over Hold over Report over Guidance (HLD §10; who can rank this is open question C7).'
+      example: '42'
+      default: null
+      min_length: 1
+    - name: reason
+      type: string
+      required: false
+      nullable: true
+      description: One or two sentences for the admin queue only — never shown to a learner (HLD §12).
+      example: 'Rule 6 — links to an outside site offering a discount, which reads as advertising'
+      default: null
+      max_length: 200
+    - name: confidence
+      type: enum
+      required: false
+      nullable: true
+      description: How sure the model is.
+      example: high
+      default: null
+      enum_values:
+        - value: low
+          description: Low confidence.
+        - value: medium
+          description: Medium confidence.
+        - value: high
+          description: High confidence.
+    - name: model
+      type: string
+      required: false
+      nullable: true
+      description: ai-server monitoring — which model judged it.
+      example: gemini-2.5-flash-lite
+      default: null
+      max_length: 100
+    - name: latency_ms
+      type: integer
+      required: false
+      nullable: true
+      description: ai-server monitoring — how long the check took.
+      example: 1043
+      default: null
+      min_value: 0
+required_if_rules:
+  - field: rule_id
+    required_when: status == ok and breaks_rule == true
+    error_code: RULE_ID_REQUIRED
+    error_message: rule_id is required when breaks_rule is true.
+response:
+  success:
+    http_status: 200
+    description: 'Rails answers 200 to stop the retries (HLD §10), including when it deliberately drops the verdict (unknown request_id, stale content_version, duplicate delivery). The body is PROPOSED — ai-server only reads the status code.'
+    fields:
+      - name: status
+        type: enum
+        nullable: false
+        description: 'What Rails did with the verdict. PROPOSED values, for logs.'
+        example: applied
+        enum_values:
+          - value: applied
+            description: The verdict was applied to the content.
+          - value: ignored
+            description: 'Dropped on purpose — duplicate, stale version, or unknown request_id.'
+  errors:
+    validation_errors:
+      - code: INVALID_PAYLOAD
+        http_status: 422
+        message: Payload failed validation.
+        description: A 4xx is a contract bug — ai-server does not retry it (HLD §10). Log it loudly.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 401
+        message: Invalid service token.
+        description: The shared service token is missing or wrong (HLD §16). ai-server does not retry 4xx.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: Rails error.
+        description: 'ai-server retries on 5xx and network errors only: attempt 1 immediately, 2 after 10s, 3 after 60s, 4 after 5 min, then gives up, logs, and leaves it to Rails'' deadline (HLD §10).'
+ai_hints:
+  test_scenarios:
+    - name: duplicate_delivery
+      description: 'Post the same request_id twice — the second is ignored, both answer 200.'
+    - name: stale_version
+      description: 'Verdict for content_version 1 after the post was edited to version 2 — ignored, 200.'
+    - name: late_verdict
+      description: Verdict arrives after the 5-minute deadline published the post as Unchecked — still applied; the item can move from Unchecked into the queue.
+    - name: error_status
+      description: status error — the content is treated as Unchecked.
+    - name: foreign_rule_id
+      description: rule_id not among the rules Rails sent — treated as no match.

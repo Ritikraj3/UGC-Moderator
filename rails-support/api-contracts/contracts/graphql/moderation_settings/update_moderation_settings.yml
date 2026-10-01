@@ -1,0 +1,341 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Update Moderation Settings
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Update Moderation Settings
+  description: |-
+    NEW mutation · Priority P1 (stories 2–7), P2 (8), P3 (9) · spec "Settings" · Teacher only.
+    Partial patch — send only what changed. Every change is written to the moderation record ("mode changes",
+    spec — Settings). Changing a mode or rule never re-checks content that is already up (HLD §14).
+  tags:
+    - moderation
+    - admin
+    - settings
+    - p1
+  side_effects:
+    - updates_settings
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: UpdateModerationSettings
+  input_type: UpdateModerationSettingsInput
+  return_type: UpdateModerationSettingsPayload
+  example_document: |-
+    mutation UpdateModerationSettings($input: UpdateModerationSettingsInput!) {
+      updateModerationSettings(input: $input) {
+        message
+        settings {
+          moderationEnabled
+        contentAreas { area enabled }
+        contentReviewMode
+        moderationMode
+        academyDescription
+        learnerAgeGroup
+        toneOfConversation
+        removalsBeforeRestriction
+        repeatedPostCount
+        repeatedPostWindowMinutes
+        holdFirstPostsEnabled
+        holdFirstPostsCount
+        updatedAt
+        }
+      }
+    }
+input:
+  fields:
+    - name: moderation_enabled
+      type: boolean
+      required: false
+      nullable: true
+      description: Master on/off (story 2).
+      example: null
+      default: null
+    - name: content_areas
+      type: array
+      required: false
+      nullable: true
+      description: Areas to switch on or off (story 3). Only the areas sent are changed.
+      example: null
+      default: null
+      min_items: 1
+      max_items: 4
+      items:
+        type: object
+        fields:
+          - name: area
+            type: enum
+            required: true
+            nullable: false
+            description: Content area.
+            example: COMMUNITY
+            enum_values:
+              - value: PRODUCT_DISCUSSIONS
+                description: 'The discussion under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product (spec — Scope).'
+              - value: COMMUNITY
+                description: Community posts and their comments (spec — Scope).
+              - value: FEEDS
+                description: Feed posts and their comments (spec — Scope).
+              - value: NEWSFEED
+                description: Newsfeed discussions (spec — Scope).
+          - name: enabled
+            type: boolean
+            required: true
+            nullable: false
+            description: On or off.
+            example: true
+    - name: content_review_mode
+      type: enum
+      required: false
+      nullable: true
+      description: Story 4.
+      example: null
+      default: null
+      enum_values:
+        - value: REVIEW_FIRST
+          description: Content is held until the verdict arrives. Default.
+        - value: PUBLISH_FIRST
+          description: Content goes live at once and comes down if it breaks a rule.
+    - name: moderation_mode
+      type: enum
+      required: false
+      nullable: true
+      description: Story 5.
+      example: null
+      default: null
+      enum_values:
+        - value: AUTOPILOT
+          description: The rule's action is applied automatically.
+        - value: COPILOT
+          description: Nothing is stopped automatically; flagged content waits for a person.
+        - value: AI_DISABLED
+          description: The AI never runs. Blocked words and learner reports only.
+    - name: academy_description
+      type: string
+      required: false
+      nullable: true
+      description: '"Description*" (story 6). Blank is rejected — the form marks it required.'
+      example: null
+      default: null
+      min_length: 1
+      max_length: 2000
+    - name: learner_age_group
+      type: enum
+      required: false
+      nullable: true
+      description: '"Learner age group*" (story 6).'
+      example: null
+      default: null
+      enum_values:
+        - value: UNDER_18
+          description: Under 18.
+        - value: ADULTS
+          description: Adults.
+        - value: MIXED
+          description: Mixed.
+    - name: tone_of_conversation
+      type: enum
+      required: false
+      nullable: true
+      description: '"Tone of conversation*" (story 6).'
+      example: null
+      default: null
+      enum_values:
+        - value: CASUAL
+          description: Casual — banter that is normal here.
+        - value: PROFESSIONAL
+          description: Professional.
+    - name: removals_before_restriction
+      type: integer
+      required: false
+      nullable: true
+      description: '"Number of removals*" (story 7).'
+      example: null
+      default: null
+      min_value: 1
+    - name: repeated_post_count
+      type: integer
+      required: false
+      nullable: true
+      description: '"Number of posts*" (story 8).'
+      example: null
+      default: null
+      min_value: 1
+    - name: repeated_post_window_minutes
+      type: integer
+      required: false
+      nullable: true
+      description: '"Within how long*" (story 8) — minutes PROPOSED (C23).'
+      example: null
+      default: null
+      min_value: 1
+    - name: hold_first_posts_enabled
+      type: boolean
+      required: false
+      nullable: true
+      description: Story 9.
+      example: null
+      default: null
+    - name: hold_first_posts_count
+      type: integer
+      required: false
+      nullable: true
+      description: '"Number of first posts to hold*" (story 9).'
+      example: null
+      default: null
+      min_value: 1
+required_if_rules:
+  - field: hold_first_posts_count
+    required_when: hold_first_posts_enabled == true
+    error_code: FIRST_POSTS_COUNT_REQUIRED
+    error_message: Enter how many first posts to hold.
+response:
+  success:
+    http_status: 200
+    description: Saved settings.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: settings
+        type: object
+        nullable: false
+        description: The settings after the change.
+        example: {}
+        fields:
+          - name: moderation_enabled
+            type: boolean
+            nullable: false
+            description: Master on/off for the academy (story 2). Off → nothing is checked anywhere.
+            example: true
+          - name: content_areas
+            type: array
+            nullable: false
+            description: 'The four places a learner writes, each switched on or off (story 3). In v1 they only decide where moderation runs — they carry no mode of their own (system rule 5; conflict C2).'
+            example:
+              - area: COMMUNITY
+                enabled: true
+            items:
+              type: object
+              fields:
+                - name: area
+                  type: enum
+                  nullable: false
+                  description: Content area.
+                  example: COMMUNITY
+                  enum_values:
+                    - value: PRODUCT_DISCUSSIONS
+                      description: 'The discussion under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product (spec — Scope).'
+                    - value: COMMUNITY
+                      description: Community posts and their comments (spec — Scope).
+                    - value: FEEDS
+                      description: Feed posts and their comments (spec — Scope).
+                    - value: NEWSFEED
+                      description: Newsfeed discussions (spec — Scope).
+                - name: enabled
+                  type: boolean
+                  nullable: false
+                  description: Whether moderation runs here.
+                  example: true
+          - name: content_review_mode
+            type: enum
+            nullable: false
+            description: Does content appear before or after the check (story 4). Default REVIEW_FIRST.
+            example: REVIEW_FIRST
+            enum_values:
+              - value: REVIEW_FIRST
+                description: Content is held until the verdict arrives. Default.
+              - value: PUBLISH_FIRST
+                description: Content goes live at once and comes down if it breaks a rule.
+          - name: moderation_mode
+            type: enum
+            nullable: false
+            description: Who acts on a flag once it is raised (story 5). The default is not stated in the sources — open question C23.
+            example: COPILOT
+            enum_values:
+              - value: AUTOPILOT
+                description: The rule's action is applied automatically.
+              - value: COPILOT
+                description: Nothing is stopped automatically; flagged content waits for a person.
+              - value: AI_DISABLED
+                description: The AI never runs. Blocked words and learner reports only.
+          - name: academy_description
+            type: string
+            nullable: true
+            description: '"Description*" — what the academy is (story 6). Feeds school_context on every check.'
+            example: NEET coaching academy for class 11 and 12
+          - name: learner_age_group
+            type: enum
+            nullable: true
+            description: '"Learner age group*" (story 6).'
+            example: UNDER_18
+            enum_values:
+              - value: UNDER_18
+                description: Under 18.
+              - value: ADULTS
+                description: Adults.
+              - value: MIXED
+                description: Mixed.
+          - name: tone_of_conversation
+            type: enum
+            nullable: true
+            description: '"Tone of conversation*" — banter normal in one is not in the other (story 6).'
+            example: CASUAL
+            enum_values:
+              - value: CASUAL
+                description: Casual — banter that is normal here.
+              - value: PROFESSIONAL
+                description: Professional.
+          - name: removals_before_restriction
+            type: integer
+            nullable: true
+            description: '"Number of removals*" — confirmed removals (never flags) that restrict a learner automatically (story 7, system rule 10). Default not stated — C23.'
+            example: 5
+          - name: repeated_post_count
+            type: integer
+            nullable: true
+            description: '"Number of posts*" — how many repeats count as spam (story 8). Default not stated — C23.'
+            example: 3
+          - name: repeated_post_window_minutes
+            type: integer
+            nullable: true
+            description: '"Within how long*" (story 8). The unit is not stated; minutes is PROPOSED — C23.'
+            example: 10
+          - name: hold_first_posts_enabled
+            type: boolean
+            nullable: false
+            description: 'Hold a new learner''s first posts. Off by default, for free-signup academies (story 9, spec).'
+            example: false
+          - name: hold_first_posts_count
+            type: integer
+            nullable: true
+            description: '"Number of first posts to hold*" (story 9).'
+            example: null
+          - name: updated_at
+            type: datetime
+            nullable: false
+            description: Last change.
+            example: '2026-09-30T09:00:00Z'
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

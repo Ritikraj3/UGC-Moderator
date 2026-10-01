@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Test Moderation Blocked Word
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Test Moderation Blocked Word
+  description: |-
+    NEW mutation · Priority P2 · story 33 · Teacher only.
+    Tests a word against sample text BEFORE saving it, so one that would stop valid content is caught early.
+    Purely local — the same server-side disguise matcher Rails uses on real content. Nothing is stored.
+  tags:
+    - moderation
+    - admin
+    - blocked-words
+    - p2
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: TestModerationBlockedWord
+  input_type: TestModerationBlockedWordInput
+  return_type: TestModerationBlockedWordPayload
+  example_document: |-
+    mutation TestModerationBlockedWord($input: TestModerationBlockedWordInput!) {
+      testModerationBlockedWord(input: $input) {
+        matches
+        matchedText
+      }
+    }
+input:
+  fields:
+    - name: value
+      type: string
+      required: true
+      nullable: false
+      description: The word or web address being considered.
+      example: ass
+      min_length: 1
+      max_length: 255
+    - name: sample_text
+      type: string
+      required: true
+      nullable: false
+      description: Sample text to test against.
+      example: Submit your class assignment by Friday
+      min_length: 1
+      max_length: 5000
+response:
+  success:
+    http_status: 200
+    description: Match result.
+    fields:
+      - name: matches
+        type: boolean
+        nullable: false
+        description: Whether the word would stop this text.
+        example: false
+      - name: matched_text
+        type: array
+        nullable: false
+        description: The pieces of text it matched.
+        example: []
+        items:
+          type: string
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

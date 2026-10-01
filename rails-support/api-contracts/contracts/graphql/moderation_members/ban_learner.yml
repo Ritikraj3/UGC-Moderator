@@ -1,0 +1,223 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Ban Learner
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Ban Learner
+  description: |-
+    NEW mutation · Priority P1 · stories 48, 49 · Teacher only (spec: "Who can ban? Teachers only. It affects a course the learner paid for").
+    Ban from one product, or from the whole academy — the Teacher chooses. A banned learner cannot post there;
+    their enrolment and paid course access are untouched (system rule 14). An academy ban replaces any product
+    ban the learner already has (system rule 19). Banning is always a person's decision — never automatic.
+    How this relates to today's per-community banCommunityMember (IS_PERMITTED / IS_BANNED) is open question C30.
+  tags:
+    - moderation
+    - admin
+    - bans
+    - p1
+  side_effects:
+    - bans_learner
+    - replaces_product_bans_on_academy_ban
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: BanLearner
+  input_type: BanLearnerInput
+  return_type: BanLearnerPayload
+  example_document: |-
+    mutation BanLearner($input: BanLearnerInput!) {
+      banLearner(input: $input) {
+        message
+        ban { id scope product { id type name } since }
+      }
+    }
+input:
+  fields:
+    - name: user_id
+      type: id
+      required: true
+      nullable: false
+      description: The learner.
+      example: '9001'
+      depends_on:
+        operation: contracts/graphql/moderation_queue/list_moderation_queue_items
+        field_returned: learner
+        pass_as: user_id
+        ui_hint: learner.id of a queue item or member row.
+    - name: scope
+      type: enum
+      required: true
+      nullable: false
+      description: One product or the whole academy.
+      example: PRODUCT
+      enum_values:
+        - value: PRODUCT
+          description: Banned from posting in one product.
+        - value: ACADEMY
+          description: Banned from posting anywhere in the academy. Replaces any product ban.
+    - name: product_id
+      type: id
+      required: false
+      nullable: true
+      description: Required for a PRODUCT ban.
+      example: '314'
+      default: null
+      depends_on:
+        operation: contracts/graphql/moderation_reports/list_moderation_product_activity
+        field_returned: product
+        pass_as: product_id
+        ui_hint: product.id — or any existing product picker.
+    - name: product_type
+      type: enum
+      required: false
+      nullable: true
+      description: Required for a PRODUCT ban.
+      example: COURSE
+      default: null
+      enum_values:
+        - value: COURSE
+          description: Course.
+        - value: BATCH
+          description: Batch.
+        - value: BUNDLE
+          description: Bundle.
+        - value: MOCK_TEST
+          description: Mock test.
+        - value: TEST_SERIES
+          description: Test series.
+        - value: EBOOK
+          description: Ebook.
+        - value: WEBINAR
+          description: Webinar.
+        - value: FREE_RESOURCE
+          description: Free resource.
+        - value: PODCAST
+          description: Podcast.
+        - value: CUSTOM
+          description: Custom product.
+required_if_rules:
+  - field: product_id
+    required_when: scope == PRODUCT
+    error_code: PRODUCT_REQUIRED
+    error_message: Pick the product to ban the learner from.
+  - field: product_type
+    required_when: scope == PRODUCT
+    error_code: PRODUCT_TYPE_REQUIRED
+    error_message: Product type is required for a product ban.
+response:
+  success:
+    http_status: 200
+    description: Banned.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: ban
+        type: object
+        nullable: false
+        description: The ban.
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Ban id.
+            example: '61'
+            read_only: true
+          - name: scope
+            type: enum
+            nullable: false
+            description: Scope.
+            example: PRODUCT
+            enum_values:
+              - value: PRODUCT
+                description: Banned from posting in one product.
+              - value: ACADEMY
+                description: Banned from posting anywhere in the academy. Replaces any product ban.
+          - name: product
+            type: object
+            nullable: true
+            description: Product for a PRODUCT ban.
+            example:
+              id: '314'
+              type: COURSE
+              name: NEET Biology 2027
+            fields:
+              - name: id
+                type: id
+                nullable: false
+                description: Product id.
+                example: '314'
+                read_only: true
+              - name: type
+                type: enum
+                nullable: false
+                description: Product type.
+                example: COURSE
+                enum_values:
+                  - value: COURSE
+                    description: Course.
+                  - value: BATCH
+                    description: Batch.
+                  - value: BUNDLE
+                    description: Bundle.
+                  - value: MOCK_TEST
+                    description: Mock test.
+                  - value: TEST_SERIES
+                    description: Test series.
+                  - value: EBOOK
+                    description: Ebook.
+                  - value: WEBINAR
+                    description: Webinar.
+                  - value: FREE_RESOURCE
+                    description: Free resource.
+                  - value: PODCAST
+                    description: Podcast.
+                  - value: CUSTOM
+                    description: Custom product.
+              - name: name
+                type: string
+                nullable: false
+                description: Product name.
+                example: NEET Biology 2027
+          - name: since
+            type: datetime
+            nullable: false
+            description: Since.
+            example: '2026-09-30T11:05:00Z'
+  errors:
+    business_errors:
+      - code: LEARNER_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: LEARNER_NOT_FOUND
+        field: user_id
+        message: This learner no longer exists.
+        description: No learner with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: ALREADY_BANNED
+        http_status: 200
+        graphql_extension_code: ALREADY_BANNED
+        field: user_id
+        message: This learner is already banned there.
+        description: An active ban with the same scope exists (or an academy ban covers it).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

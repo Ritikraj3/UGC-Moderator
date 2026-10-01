@@ -1,0 +1,92 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Submit Moderation Outcome (Rails → ai-server)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Submit Moderation Outcome (Rails → ai-server)
+  description: |-
+    Priority P1 · HLD §8, §10 (Outcome), §15.
+    Rails tells ai-server what a person decided, so the quality counters mean something: a stopped item a
+    Teacher approved is a wrong flag; a passed item a learner reported and a Teacher removed is a miss.
+    Fire and forget — if this call fails, a statistic is lost and nothing else. It must never block or undo
+    a decision Rails has already made. Sent after approve, remove and restore on content that has a
+    request_id (content never sent to ai-server has nothing to report). Whether these fields are enough to
+    compute the counters is open question C8.
+  tags:
+    - moderation
+    - service-to-service
+    - rails-calls-ai-server
+    - p1
+  side_effects:
+    - increments_quality_counters
+  idempotent: false
+rest:
+  method: POST
+  path: /api/moderation/outcome
+  auth: none
+input:
+  fields:
+    - name: request_id
+      type: string
+      required: true
+      nullable: false
+      description: The check this outcome belongs to — the request_id of the latest check on the content version the person decided on.
+      example: b6f1c0de-7c1a-4e0a-9d3e-2f7a1b9c4e55
+      min_length: 1
+    - name: school_id
+      type: integer
+      required: true
+      nullable: false
+      description: Which academy.
+      example: 81
+      min_value: 1
+    - name: outcome
+      type: enum
+      required: true
+      nullable: false
+      description: What the person decided (HLD §10).
+      example: approved
+      enum_values:
+        - value: approved
+          description: Approved — made visible.
+        - value: removed
+          description: 'Removed — taken down, restorable.'
+        - value: restored
+          description: A removal was undone.
+    - name: decided_at
+      type: datetime
+      required: true
+      nullable: false
+      description: When the person decided.
+      example: '2026-09-30T11:02:00Z'
+response:
+  success:
+    http_status: 202
+    description: Accepted. The response code and body are PROPOSED — HLD §10 does not define them. Rails must ignore the result either way.
+    fields:
+      - name: status
+        type: enum
+        nullable: false
+        description: Always accepted.
+        example: accepted
+        enum_values:
+          - value: accepted
+            description: Recorded.
+  errors:
+    validation_errors:
+      - code: INVALID_REQUEST
+        http_status: 400
+        message: Request body failed validation.
+        description: Fastify schema validation failed. Rails logs it and moves on.
+    auth_errors:
+      - code: FORBIDDEN
+        http_status: 403
+        message: Internal endpoint
+        description: checkInternalHost — same guard as the submit (HLD §10).
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: ai-server error.
+        description: A statistic is lost; nothing else. Rails does not retry or roll back.

@@ -1,0 +1,381 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Moderation Log Entries
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Moderation Log Entries
+  description: |-
+    NEW query · Priority P1 · story 67 · spec "The record" · system rule 11 · HLD §8, §13.
+    "Action, Done by, Content, Rule, Date and time, including content that was blocked and never published" — the
+    evidence when a decision is disputed. The record holds every action plus rule changes, mode changes and
+    word-list edits (spec). Built on PaperTrail (HLD §8); where blocked records and settings changes live is
+    conflict C10.
+  tags:
+    - moderation
+    - admin
+    - reports
+    - log
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListModerationLogEntries
+  return_type: ModerationLogEntryConnection
+  example_document: |-
+    query ListModerationLogEntries($action: ModerationLogActionEnum, $ruleId: ID, $dateFrom: String, $dateTo: String, $first: Int, $after: String) {
+      listModerationLogEntries(action: $action, ruleId: $ruleId, dateFrom: $dateFrom, dateTo: $dateTo, first: $first, after: $after) {
+        nodes {
+          id
+          action
+          doneBy { kind id name }
+          content { type id title body imageUrl }
+          rule { id number name }
+          occurredAt
+          details
+        }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: action
+      type: enum
+      required: false
+      nullable: true
+      description: Filter by action.
+      example: null
+      default: null
+      enum_values:
+        - value: CONTENT_BLOCKED
+          description: 'Content stopped and never created (blocked word), or blocked after writing.'
+        - value: CONTENT_HELD
+          description: Content held for review.
+        - value: CONTENT_GUIDANCE
+          description: Guidance shown on live content.
+        - value: CONTENT_FLAGGED
+          description: 'Content sent to the queue while live (Report action, Copilot).'
+        - value: CONTENT_UNCHECKED
+          description: Content published without a check.
+        - value: CONTENT_REPORTED
+          description: A learner reported content.
+        - value: CONTENT_APPROVED
+          description: A person approved content.
+        - value: CONTENT_REMOVED
+          description: A person removed content.
+        - value: CONTENT_RESTORED
+          description: A person restored removed content.
+        - value: EXAMPLE_MARKED
+          description: A decided item was marked as an example.
+        - value: LEARNER_RESTRICTED
+          description: A learner was restricted.
+        - value: RESTRICTION_LIFTED
+          description: A restriction was lifted.
+        - value: LEARNER_BANNED
+          description: A learner was banned.
+        - value: BAN_LIFTED
+          description: A ban was lifted.
+        - value: RULE_CREATED
+          description: A rule was created.
+        - value: RULE_UPDATED
+          description: A rule was reworded or re-actioned.
+        - value: RULE_PUBLISHED
+          description: A rule was published.
+        - value: RULE_UNPUBLISHED
+          description: A rule was unpublished.
+        - value: RULE_DELETED
+          description: A rule was deleted.
+        - value: BLOCKED_WORD_ADDED
+          description: A blocked word was added.
+        - value: BLOCKED_WORD_UPDATED
+          description: A blocked word was changed.
+        - value: BLOCKED_WORD_DELETED
+          description: A blocked word was deleted.
+        - value: SETTINGS_CHANGED
+          description: A moderation setting or mode changed.
+        - value: EXCEPTION_ADDED
+          description: A product exception was added.
+        - value: EXCEPTION_CHANGED
+          description: A product exception was changed.
+        - value: EXCEPTION_REMOVED
+          description: A product exception was removed.
+    - name: rule_id
+      type: id
+      required: false
+      nullable: true
+      description: Filter by rule.
+      example: null
+      default: null
+      depends_on:
+        operation: contracts/graphql/moderation_rules/list_moderation_rules
+        field_returned: id
+        pass_as: rule_id
+    - name: date_from
+      type: datetime
+      required: false
+      nullable: true
+      description: From.
+      example: null
+      default: null
+    - name: date_to
+      type: datetime
+      required: false
+      nullable: true
+      description: To.
+      example: null
+      default: null
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: 'Log entries, newest first.'
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Entries.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: Entry id.
+              example: '77001'
+              read_only: true
+            - name: action
+              type: enum
+              nullable: false
+              description: '"Action".'
+              example: CONTENT_BLOCKED
+              enum_values:
+                - value: CONTENT_BLOCKED
+                  description: 'Content stopped and never created (blocked word), or blocked after writing.'
+                - value: CONTENT_HELD
+                  description: Content held for review.
+                - value: CONTENT_GUIDANCE
+                  description: Guidance shown on live content.
+                - value: CONTENT_FLAGGED
+                  description: 'Content sent to the queue while live (Report action, Copilot).'
+                - value: CONTENT_UNCHECKED
+                  description: Content published without a check.
+                - value: CONTENT_REPORTED
+                  description: A learner reported content.
+                - value: CONTENT_APPROVED
+                  description: A person approved content.
+                - value: CONTENT_REMOVED
+                  description: A person removed content.
+                - value: CONTENT_RESTORED
+                  description: A person restored removed content.
+                - value: EXAMPLE_MARKED
+                  description: A decided item was marked as an example.
+                - value: LEARNER_RESTRICTED
+                  description: A learner was restricted.
+                - value: RESTRICTION_LIFTED
+                  description: A restriction was lifted.
+                - value: LEARNER_BANNED
+                  description: A learner was banned.
+                - value: BAN_LIFTED
+                  description: A ban was lifted.
+                - value: RULE_CREATED
+                  description: A rule was created.
+                - value: RULE_UPDATED
+                  description: A rule was reworded or re-actioned.
+                - value: RULE_PUBLISHED
+                  description: A rule was published.
+                - value: RULE_UNPUBLISHED
+                  description: A rule was unpublished.
+                - value: RULE_DELETED
+                  description: A rule was deleted.
+                - value: BLOCKED_WORD_ADDED
+                  description: A blocked word was added.
+                - value: BLOCKED_WORD_UPDATED
+                  description: A blocked word was changed.
+                - value: BLOCKED_WORD_DELETED
+                  description: A blocked word was deleted.
+                - value: SETTINGS_CHANGED
+                  description: A moderation setting or mode changed.
+                - value: EXCEPTION_ADDED
+                  description: A product exception was added.
+                - value: EXCEPTION_CHANGED
+                  description: A product exception was changed.
+                - value: EXCEPTION_REMOVED
+                  description: A product exception was removed.
+            - name: done_by
+              type: object
+              nullable: false
+              description: '"Done by".'
+              example:
+                kind: SYSTEM
+                id: null
+                name: null
+              fields:
+                - name: kind
+                  type: enum
+                  nullable: false
+                  description: Who.
+                  example: SYSTEM
+                  enum_values:
+                    - value: AI
+                      description: The AI check (via ai-server).
+                    - value: TEACHER
+                      description: A Teacher / Admin.
+                    - value: TEACHING_ASSISTANT
+                      description: A Teaching Assistant.
+                    - value: LEARNER
+                      description: A learner (reports).
+                    - value: SYSTEM
+                      description: 'Rails itself — blocked words, repeat posts, deadlines, the restriction threshold.'
+                - name: id
+                  type: id
+                  nullable: true
+                  description: User id for people.
+                  example: null
+                  read_only: true
+                - name: name
+                  type: string
+                  nullable: true
+                  description: Name for people.
+                  example: null
+            - name: content
+              type: object
+              nullable: true
+              description: '"Content" — for a blocked record, the text that was never published (spec: text, rule, author, time). Null for rule and settings changes.'
+              example:
+                type: COMMUNITY_POST
+                id: '5521'
+                title: Join XYZ Academy
+                body: 'Lower fees, DM me'
+                image_url: null
+              fields:
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Which Rails model the content lives in.
+                  example: COMMUNITY_POST
+                  enum_values:
+                    - value: COMMUNITY_POST
+                      description: A community post — Rails Post + CommunityContent (createCommunityPost / updateCommunityPost).
+                    - value: NEWSFEED_POST
+                      description: A feed post — Rails NewsfeedPost (createNewsfeedPost / updateNewsfeedPost).
+                    - value: DISCUSSION
+                      description: A DiscussionBoard row — a comment on a community/feed post (postId) or a thread in a product discussion (packageId/courseId).
+                    - value: DISCUSSION_REPLY
+                      description: A Comment row — a reply under a DiscussionBoard (createComment / updateComment).
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Id in that model.
+                  example: '5521'
+                  read_only: true
+                - name: title
+                  type: string
+                  nullable: true
+                  description: 'Title, when the content has one.'
+                  example: Join XYZ Academy
+                - name: body
+                  type: string
+                  nullable: true
+                  description: The text as the learner wrote it (the version under review).
+                  example: 'Lower fees, DM me'
+                - name: image_url
+                  type: string
+                  nullable: true
+                  description: 'The uploaded image, if any (posts.featured_image, comments.attachment_url, comments.image).'
+                  example: null
+            - name: rule
+              type: object
+              nullable: true
+              description: '"Rule".'
+              example:
+                id: '42'
+                number: 6
+                name: No spam or advertising
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Rule id.
+                  example: '42'
+                  read_only: true
+                - name: number
+                  type: integer
+                  nullable: false
+                  description: Rule number in creation order.
+                  example: 6
+                - name: name
+                  type: string
+                  nullable: false
+                  description: The academy's rule name.
+                  example: No spam or advertising
+            - name: occurred_at
+              type: datetime
+              nullable: false
+              description: '"Date and time".'
+              example: '2026-09-30T10:10:00Z'
+            - name: details
+              type: string
+              nullable: true
+              description: 'Before → after for rule, word-list and settings changes.'
+              example: null
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

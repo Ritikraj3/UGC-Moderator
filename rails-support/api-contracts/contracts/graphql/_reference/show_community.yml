@@ -1,0 +1,81 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Show Community — UNCHANGED (reference only)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Show Community — UNCHANGED (reference only)
+  description: |-
+    UNCHANGED existing query, included only as the documented source of community_id for the contracts above
+    (the validator requires every id input to name where it comes from). Nothing about it changes for moderation.
+    Bodhi caller today: CommunityDetailsRepo. Only the fields the other contracts reference are listed.
+  tags:
+    - reference
+    - unchanged
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ShowCommunity
+  return_type: Existing return type of showCommunity (unchanged)
+  example_document: |-
+    query ShowCommunity($slug: String, $schoolId: ID, $deviceType: Int, $id: ID) {
+      showCommunity(slug: $slug, schoolId: $schoolId, deviceType: $deviceType, id: $id) {
+        community { id title slug rules }
+        memberDetail { id status userId }
+        hasAdminPermission
+      }
+    }
+input:
+  fields:
+    - name: slug
+      type: string
+      required: false
+      nullable: true
+      description: Existing argument.
+      example: neet-2027
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: Unchanged.
+    fields:
+      - name: community
+        type: object
+        nullable: false
+        description: Existing field.
+        example:
+          id: '12'
+          title: NEET 2027
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Existing field — the community id.
+            example: '12'
+            read_only: true
+          - name: title
+            type: string
+            nullable: false
+            description: Existing field.
+            example: NEET 2027
+          - name: rules
+            type: string
+            nullable: true
+            description: Existing free-text community rules field. NOT the moderation rules — those come from listCommunityRules.
+            example: null
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid learner session token — same as every learner query today.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

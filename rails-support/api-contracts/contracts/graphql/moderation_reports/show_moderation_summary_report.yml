@@ -1,0 +1,138 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Show Moderation Summary Report
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Show Moderation Summary Report
+  description: |-
+    NEW query · Priority P1 · story 61.
+    "Where it runs, Content checked, Blocked before publishing, Held for review, Approved after review, Removed,
+    Reported by learners, Waiting for review, Longest waiting, Published without a check" — whether moderation is
+    keeping up. Read from Rails, where the content lives (HLD §15: each academy sees its own numbers in Rails).
+  tags:
+    - moderation
+    - admin
+    - reports
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ShowModerationSummaryReport
+  return_type: ModerationSummaryReport
+  example_document: |-
+    query ShowModerationSummaryReport($period: ModerationReportPeriodEnum!) {
+      showModerationSummaryReport(period: $period) {
+        whereItRuns
+        contentChecked
+        blockedBeforePublishing
+        heldForReview
+        approvedAfterReview
+        removed
+        reportedByLearners
+        waitingForReview
+        longestWaitingSince
+        publishedWithoutCheck
+      }
+    }
+input:
+  fields:
+    - name: period
+      type: enum
+      required: true
+      nullable: false
+      description: 'Report period. The spec gives 7 or 30 days for rule performance; the other reports'' periods are not stated, so the same two are PROPOSED.'
+      example: LAST_30_DAYS
+      enum_values:
+        - value: LAST_7_DAYS
+          description: The last 7 days.
+        - value: LAST_30_DAYS
+          description: The last 30 days.
+response:
+  success:
+    http_status: 200
+    description: Summary.
+    fields:
+      - name: where_it_runs
+        type: array
+        nullable: false
+        description: '"Where it runs" — content areas switched on.'
+        example:
+          - COMMUNITY
+          - PRODUCT_DISCUSSIONS
+        items:
+          type: enum
+          enum_values:
+            - value: PRODUCT_DISCUSSIONS
+              description: 'The discussion under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product (spec — Scope).'
+            - value: COMMUNITY
+              description: Community posts and their comments (spec — Scope).
+            - value: FEEDS
+              description: Feed posts and their comments (spec — Scope).
+            - value: NEWSFEED
+              description: Newsfeed discussions (spec — Scope).
+      - name: content_checked
+        type: integer
+        nullable: false
+        description: '"Content checked".'
+        example: 4120
+      - name: blocked_before_publishing
+        type: integer
+        nullable: false
+        description: '"Blocked before publishing".'
+        example: 61
+      - name: held_for_review
+        type: integer
+        nullable: false
+        description: '"Held for review".'
+        example: 44
+      - name: approved_after_review
+        type: integer
+        nullable: false
+        description: '"Approved after review".'
+        example: 19
+      - name: removed
+        type: integer
+        nullable: false
+        description: '"Removed".'
+        example: 25
+      - name: reported_by_learners
+        type: integer
+        nullable: false
+        description: '"Reported by learners".'
+        example: 8
+      - name: waiting_for_review
+        type: integer
+        nullable: false
+        description: '"Waiting for review" — now.'
+        example: 12
+      - name: longest_waiting_since
+        type: datetime
+        nullable: true
+        description: '"Longest waiting" — the 36-hour clock runs against this.'
+        example: '2026-09-29T14:00:00Z'
+      - name: published_without_check
+        type: integer
+        nullable: false
+        description: '"Published without a check".'
+        example: 3
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

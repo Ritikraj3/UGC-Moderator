@@ -1,0 +1,131 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Update Moderation Blocked Word
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Update Moderation Blocked Word
+  description: |-
+    NEW mutation · Priority P2 · story 28 · Teacher only.
+    Corrects a mistyped or changed entry — Learnyst's own words included ("fully editable", spec).
+  tags:
+    - moderation
+    - admin
+    - blocked-words
+    - p2
+  side_effects:
+    - updates_blocked_word
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: UpdateModerationBlockedWord
+  input_type: UpdateModerationBlockedWordInput
+  return_type: UpdateModerationBlockedWordPayload
+  example_document: |-
+    mutation UpdateModerationBlockedWord($input: UpdateModerationBlockedWordInput!) {
+      updateModerationBlockedWord(input: $input) {
+        message
+        blockedWord { id value kind addedBy createdAt }
+      }
+    }
+input:
+  fields:
+    - name: word_id
+      type: id
+      required: true
+      nullable: false
+      description: The word.
+      example: '900'
+      depends_on:
+        operation: contracts/graphql/moderation_blocked_words/list_moderation_blocked_words
+        field_returned: id
+        pass_as: word_id
+    - name: value
+      type: string
+      required: true
+      nullable: false
+      description: The corrected value.
+      example: rival-academy.com
+      min_length: 1
+      max_length: 255
+response:
+  success:
+    http_status: 200
+    description: The updated word.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: blocked_word
+        type: object
+        nullable: false
+        description: The word.
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Blocked word id.
+            example: '900'
+            read_only: true
+          - name: value
+            type: string
+            nullable: false
+            description: '"Word or web address" — stored as a normal word; the matching handles disguises (spec).'
+            example: rivalacademy.com
+          - name: kind
+            type: enum
+            nullable: false
+            description: Word or web address — derived from the value.
+            example: WEB_ADDRESS
+            enum_values:
+              - value: WORD
+                description: 'A word — matched through disguises (1d10t, id**t, IDIOT, i d i o t).'
+              - value: WEB_ADDRESS
+                description: A web address — rivalacademy.com also covers www.rivalacademy.com/neet.
+            computed: true
+            computed_description: A value that parses as a domain or URL is a WEB_ADDRESS.
+          - name: added_by
+            type: enum
+            nullable: false
+            description: '"Added by" — Learnyst or Academy (story 27).'
+            example: ACADEMY
+            enum_values:
+              - value: LEARNYST
+                description: Pre-filled by Learnyst.
+              - value: ACADEMY
+                description: Added by the academy.
+          - name: created_at
+            type: datetime
+            nullable: false
+            description: When added.
+            example: '2026-09-10T12:00:00Z'
+  errors:
+    business_errors:
+      - code: BLOCKED_WORD_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: BLOCKED_WORD_NOT_FOUND
+        field: word_id
+        message: This blocked word no longer exists.
+        description: No blocked word with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

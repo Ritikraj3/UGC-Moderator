@@ -1,0 +1,168 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Moderation Blocked Words
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Moderation Blocked Words
+  description: |-
+    NEW query · Priority P1 · story 27 ("Word or web address, Added by").
+    The blocked words on one rule. Admin-only — word matching runs server-side and the list is never sent to a
+    learner app (HLD §16). Whether an academy-wide list view also exists is conflict C5.
+  tags:
+    - moderation
+    - admin
+    - blocked-words
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListModerationBlockedWords
+  return_type: ModerationBlockedWordConnection
+  example_document: |-
+    query ListModerationBlockedWords($ruleId: ID!, $search: String, $first: Int, $after: String) {
+      listModerationBlockedWords(ruleId: $ruleId, search: $search, first: $first, after: $after) {
+        nodes { id value kind addedBy createdAt }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: rule_id
+      type: id
+      required: true
+      nullable: false
+      description: The rule.
+      example: '42'
+      depends_on:
+        operation: contracts/graphql/moderation_rules/list_moderation_rules
+        field_returned: id
+        pass_as: rule_id
+    - name: search
+      type: string
+      required: false
+      nullable: true
+      description: Search the words.
+      example: null
+      default: null
+      min_length: 1
+      max_length: 100
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: Blocked words on the rule.
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Words.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: Blocked word id.
+              example: '900'
+              read_only: true
+            - name: value
+              type: string
+              nullable: false
+              description: '"Word or web address" — stored as a normal word; the matching handles disguises (spec).'
+              example: rivalacademy.com
+            - name: kind
+              type: enum
+              nullable: false
+              description: Word or web address — derived from the value.
+              example: WEB_ADDRESS
+              enum_values:
+                - value: WORD
+                  description: 'A word — matched through disguises (1d10t, id**t, IDIOT, i d i o t).'
+                - value: WEB_ADDRESS
+                  description: A web address — rivalacademy.com also covers www.rivalacademy.com/neet.
+              computed: true
+              computed_description: A value that parses as a domain or URL is a WEB_ADDRESS.
+            - name: added_by
+              type: enum
+              nullable: false
+              description: '"Added by" — Learnyst or Academy (story 27).'
+              example: ACADEMY
+              enum_values:
+                - value: LEARNYST
+                  description: Pre-filled by Learnyst.
+                - value: ACADEMY
+                  description: Added by the academy.
+            - name: created_at
+              type: datetime
+              nullable: false
+              description: When added.
+              example: '2026-09-10T12:00:00Z'
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    business_errors:
+      - code: RULE_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: RULE_NOT_FOUND
+        field: rule_id
+        message: This rule no longer exists.
+        description: No rule with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

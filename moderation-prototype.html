@@ -1,0 +1,1435 @@
+<title>Moderation Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a dark demo bar on top; below it the admin app and the learner app side by side (stacked on narrow screens),
+   each drawn in its product's own look; a "behind the scenes" log slides up from the bottom.
+   Deliberately single-theme (light): the two product UIs are reproduced as they ship in light mode. */
+:root {
+  color-scheme: light;
+  /* admin app — learnyst-admin src/index.css */
+  --a-bg: #ffffff; --a-fg: #282828; --a-muted: #6e6e6e; --a-primary: #001205; --a-primary-hover: #042c0f;
+  --a-secondary: #f5f5f5; --a-secondary-hover: #e5e5e5; --a-border: #e3e1e6; --a-input: #f8f8f8; --a-ring: #4fba58;
+  --a-selected: #399f4b; --a-sidebar-fg: #404040; --a-sidebar-muted: #737373; --a-sidebar-accent: #f5f5f5;
+  --a-danger: #dc2626; --a-danger-soft: #fef2f2; --a-page: #fafafa;
+  --a-ok: #3d7a10; --a-ok-soft: #eef9e0; --a-warn: #8a6200; --a-warn-soft: #fef6d6; --a-info: #2f4fd6; --a-info-soft: #eef1fe;
+  --a-radius: 10px; --a-radius-sm: 8px;
+  /* learner app — bodhi Socials tokens (--lyst-*, --primary-*) */
+  --l-bg-1: #f4f5f7; --l-bg-2: #ffffff; --l-fg: #1b1f24; --l-hint: #6b7280; --l-border: #e4e6ea; --l-primary: #4f46e5;
+  --l-primary-soft: #eef0ff; --l-danger: #c62828; --l-danger-soft: #fdecec; --l-warn: #8a5a00; --l-warn-soft: #fff4dc;
+  --l-ok: #1e7b45; --l-ok-soft: #e4f5eb; --l-info: #1f5fbf; --l-info-soft: #e8f0fd; --l-radius: 12px;
+  /* demo chrome */
+  --d-bg: #16181d; --d-fg: #eceef2; --d-muted: #9aa1ad; --d-line: #2b2f37; --d-accent: #f5c542;
+  --lane-learner: #7c4dff; --lane-rails: #0f8a8a; --lane-ai: #c56a00; --lane-admin: #2f6fe0; --lane-sys: #6b7280;
+  --img-a: #e8f1e4; --img-b: #fdeee2; --img-c: #e7ecfb;
+  --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box }
+html, body { height: 100% }
+body { background: #e9ebef; color: var(--a-fg); font: 14px/1.5 var(--font); padding-inline: 0; padding-block: 0 }
+button { font: inherit; color: inherit; cursor: pointer }
+input, select, textarea { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--a-ring); outline-offset: 2px }
+.mono { font-family: var(--mono); font-size: 12px }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0) }
+
+/* ── demo bar ── */
+.demobar { background: var(--d-bg); color: var(--d-fg); padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; position: sticky; top: 0; z-index: 55 }
+.demobar h1 { font-size: 15px; margin: 0; font-weight: 700; letter-spacing: .01em; display: flex; gap: 8px; align-items: center }
+.demobar h1 small { font-weight: 500; color: var(--d-muted); font-size: 12px }
+.dgroup { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+.dgroup > .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--d-muted) }
+.dseg { display: inline-flex; background: #232730; border-radius: 8px; padding: 2px }
+.dseg button { border: 0; background: none; color: var(--d-muted); padding: 5px 10px; border-radius: 6px; font-size: 13px }
+.dseg button[aria-pressed="true"] { background: var(--d-fg); color: var(--d-bg); font-weight: 600 }
+.dbtn { border: 1px solid var(--d-line); background: #20242c; color: var(--d-fg); padding: 5px 10px; border-radius: 8px; font-size: 13px }
+.dbtn:hover { border-color: var(--d-muted) }
+.dbtn.hot { border-color: var(--d-accent); color: var(--d-accent) }
+.clock { font-family: var(--mono); font-size: 12px; color: var(--d-accent) }
+.spacer { flex: 1 }
+.scen { position: relative }
+.scen-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, 92vw); background: #1d2027; border: 1px solid var(--d-line); border-radius: 10px; padding: 6px; z-index: 50; display: grid; gap: 2px; box-shadow: 0 12px 30px rgba(0,0,0,.35); max-height: calc(100vh - 90px); overflow-y: auto }
+.scen-menu button { text-align: left; background: none; border: 0; color: var(--d-fg); padding: 8px 10px; border-radius: 8px; display: grid; gap: 2px }
+.scen-menu button:hover { background: #2a2e37 }
+.scen-menu small { color: var(--d-muted); font-size: 12px; line-height: 1.35 }
+
+/* ── stage ── */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px; align-items: start }
+.stage.one { grid-template-columns: minmax(0, 1fr) }
+@media (max-width: 1180px) { .stage { grid-template-columns: minmax(0, 1fr) } }
+.stage.withlog .frame { height: calc(70vh - 104px); min-height: 420px }
+.frame { border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 24px rgba(15,20,30,.08); min-width: 0; display: flex; flex-direction: column; height: calc(100vh - 92px); min-height: 640px }
+.frame-label { background: #d9dce2; color: #404652; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 6px 12px; display: flex; justify-content: space-between; gap: 8px }
+.frame-body { flex: 1; min-height: 0; display: flex }
+
+/* ── admin app ── */
+.admin { background: var(--a-page); color: var(--a-fg); font-family: var(--font); flex: 1; display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 0 }
+@media (max-width: 760px) { .admin { grid-template-columns: minmax(0, 1fr) } .a-side { display: none } }
+.a-side { background: var(--a-bg); border-right: 1px solid var(--a-border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto }
+.a-brand { display: flex; gap: 8px; align-items: center; padding: 4px 8px 14px; font-weight: 700 }
+.a-brand .logo { width: 26px; height: 26px; border-radius: 7px; background: var(--a-primary); color: #fff; display: grid; place-items: center; font-size: 13px }
+.a-brand small { display: block; font-weight: 500; color: var(--a-muted); font-size: 11px }
+.a-grp { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--a-sidebar-muted); padding: 12px 10px 4px }
+.a-nav { border: 0; background: none; text-align: left; padding: 7px 10px; border-radius: 8px; color: var(--a-sidebar-fg); display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13.5px; width: 100% }
+.a-nav:hover { background: var(--a-sidebar-accent) }
+.a-nav.dim { color: #a3a3a3; cursor: default }
+.a-nav.dim:hover { background: none }
+.a-nav.on { background: #eef8ef; color: var(--a-selected); font-weight: 600 }
+.a-nav.sub { padding-left: 24px }
+.a-count { background: var(--a-danger); color: #fff; border-radius: 99px; font-size: 11px; padding: 0 7px; line-height: 18px; font-weight: 600 }
+.a-main { overflow-y: auto; min-width: 0; display: flex; flex-direction: column }
+.a-top { background: var(--a-bg); border-bottom: 1px solid var(--a-border); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
+.crumbs { color: var(--a-muted); font-size: 13px }
+.crumbs b { color: var(--a-fg); font-weight: 600 }
+.who { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--a-muted) }
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: none }
+.a-page { padding: 20px; display: grid; gap: 16px; align-content: start }
+.a-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap }
+.a-head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em }
+.a-head p { margin: 4px 0 0; color: var(--a-muted); max-width: 64ch }
+.card { background: var(--a-bg); border: 1px solid var(--a-border); border-radius: var(--a-radius); min-width: 0 }
+.card-h { padding: 14px 16px; border-bottom: 1px solid var(--a-border); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
+.card-h h3 { margin: 0; font-size: 15px; font-weight: 600 }
+.card-h p { margin: 2px 0 0; color: var(--a-muted); font-size: 13px }
+.card-b { padding: 16px; display: grid; gap: 14px }
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--a-border) }
+.srow:first-child { border-top: 0 }
+.srow .t { font-weight: 600; font-size: 14px }
+.srow .d { color: var(--a-muted); font-size: 13px }
+.story { font-family: var(--mono); font-size: 11px; color: #9a9a9a; margin-left: 6px; font-weight: 400 }
+.btn { border: 1px solid transparent; border-radius: var(--a-radius-sm); padding: 7px 14px; font-weight: 600; font-size: 13.5px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; background: var(--a-secondary); color: var(--a-fg) }
+.btn:hover { background: var(--a-secondary-hover) }
+.btn.primary { background: var(--a-primary); color: #fff }
+.btn.primary:hover { background: var(--a-primary-hover) }
+.btn.outline { background: var(--a-bg); border-color: var(--a-border) }
+.btn.outline:hover { background: var(--a-input) }
+.btn.danger { background: var(--a-danger-soft); color: var(--a-danger); border-color: #f7c9c9 }
+.btn.ghost { background: none }
+.btn.sm { padding: 4px 10px; font-size: 12.5px }
+.btn[disabled] { opacity: .45; cursor: not-allowed }
+.switch { width: 36px; height: 20px; border-radius: 99px; border: 0; background: #d4d4d4; position: relative; flex: none; padding: 0 }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s }
+.switch[aria-checked="true"] { background: var(--a-selected) }
+.switch[aria-checked="true"]::after { transform: translateX(16px) }
+.switch[disabled] { opacity: .5; cursor: not-allowed }
+.field { display: grid; gap: 6px }
+.field > label { font-weight: 600; font-size: 13px }
+.field .hint { color: var(--a-muted); font-size: 12.5px }
+.inp { width: 100%; background: var(--a-input); border: 1px solid var(--a-border); border-radius: var(--a-radius-sm); padding: 8px 10px; font-size: 14px }
+.inp:focus { outline: none; border-color: var(--a-ring); box-shadow: 0 0 0 3px #f2fbf2 }
+textarea.inp { resize: vertical; min-height: 72px }
+.row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px }
+.row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px }
+@media (max-width: 640px) { .row2, .row3 { grid-template-columns: minmax(0, 1fr) } }
+.radios { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) }
+.rcard { border: 1px solid var(--a-border); border-radius: var(--a-radius); background: var(--a-bg); padding: 12px; text-align: left; display: grid; gap: 4px; align-content: start }
+.rcard b { font-size: 14px; display: flex; gap: 8px; align-items: center }
+.rcard span { color: var(--a-muted); font-size: 12.5px; line-height: 1.4 }
+.rcard[aria-checked="true"] { border-color: var(--a-selected); box-shadow: inset 0 0 0 1px var(--a-selected); background: #f7fcf7 }
+.rcard[disabled] { opacity: .55; cursor: not-allowed }
+.dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #c4c4c4; flex: none }
+.rcard[aria-checked="true"] .dot { border-color: var(--a-selected); background: radial-gradient(var(--a-selected) 45%, transparent 50%) }
+.badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--a-secondary); color: var(--a-fg) }
+.badge.ok { background: var(--a-ok-soft); color: var(--a-ok) }
+.badge.warn { background: var(--a-warn-soft); color: var(--a-warn) }
+.badge.bad { background: var(--a-danger-soft); color: var(--a-danger) }
+.badge.info { background: var(--a-info-soft); color: var(--a-info) }
+.badge.dark { background: var(--a-primary); color: #fff }
+.assume { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; font-weight: 600; color: #7a4d00; background: #fff3d6; border: 1px dashed #e0b050; border-radius: 6px; padding: 1px 6px; white-space: nowrap; cursor: help }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--a-border); overflow-x: auto }
+.tabs button { border: 0; background: none; padding: 9px 12px; font-weight: 600; color: var(--a-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; display: flex; gap: 6px; align-items: center }
+.tabs button[aria-selected="true"] { color: var(--a-fg); border-bottom-color: var(--a-primary) }
+.tabs .n { background: var(--a-secondary); border-radius: 99px; padding: 0 7px; font-size: 11.5px }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+.filters select { background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 8px; padding: 6px 8px; font-size: 13px }
+.tablewrap { overflow-x: auto }
+table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 720px }
+table.t th { text-align: left; font-weight: 600; color: var(--a-muted); font-size: 12px; padding: 10px 12px; border-bottom: 1px solid var(--a-border); background: #fcfcfc; white-space: nowrap }
+table.t td { padding: 11px 12px; border-bottom: 1px solid var(--a-border); vertical-align: top }
+table.t tr.click:hover td { background: #fafafa; cursor: pointer }
+table.t tr:last-child td { border-bottom: 0 }
+.cell-content { display: grid; gap: 2px; max-width: 280px }
+.cell-content b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.cell-content span { color: var(--a-muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+.rowacts { display: flex; gap: 6px }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px }
+.kpi { background: var(--a-bg); border: 1px solid var(--a-border); border-radius: var(--a-radius); padding: 12px 14px; display: grid; gap: 2px }
+.kpi .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums }
+.kpi .k { color: var(--a-muted); font-size: 12.5px }
+.kpi.alert { border-color: #f3b5b5; background: #fffafa }
+.empty { padding: 36px 16px; text-align: center; color: var(--a-muted); display: grid; gap: 6px; justify-items: center }
+.empty b { color: var(--a-fg) }
+.bar { height: 8px; background: var(--a-secondary); border-radius: 99px; overflow: hidden; min-width: 80px }
+.bar i { display: block; height: 100% }
+
+/* sheet + dialog */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60; display: flex; justify-content: flex-end }
+.sheet { background: var(--a-bg); width: min(760px, 100%); height: 100%; display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(0,0,0,.15) }
+.sheet-h { padding: 16px 20px; border-bottom: 1px solid var(--a-border); display: flex; justify-content: space-between; gap: 12px; align-items: flex-start }
+.sheet-h h3 { margin: 0; font-size: 17px }
+.sheet-h p { margin: 3px 0 0; color: var(--a-muted); font-size: 13px }
+.sheet-b { flex: 1; overflow-y: auto; padding: 18px 20px; display: grid; gap: 16px; align-content: start }
+.sheet-f { border-top: 1px solid var(--a-border); padding: 12px 20px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; background: #fcfcfc }
+.panes { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px }
+@media (max-width: 700px) { .panes { grid-template-columns: minmax(0, 1fr) } }
+.pane { border: 1px solid var(--a-border); border-radius: var(--a-radius); padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0 }
+.pane h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--a-muted) }
+.quote { background: var(--a-input); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere }
+.ai-reason { background: var(--a-info-soft); color: #1f3aa8; border-radius: 8px; padding: 10px 12px; font-size: 13px }
+.kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 10px; font-size: 13px }
+.kv dt { color: var(--a-muted) }
+.kv dd { margin: 0 }
+.hist { display: grid; gap: 6px; font-size: 13px }
+.hist div { display: flex; gap: 8px; justify-content: space-between }
+.dialog-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 70; display: grid; place-items: center; padding: 16px }
+.dialog { background: var(--a-bg); border-radius: 12px; width: min(460px, 100%); padding: 20px; display: grid; gap: 12px; box-shadow: 0 20px 40px rgba(0,0,0,.2) }
+.dialog h3 { margin: 0; font-size: 17px }
+.dialog p { margin: 0; color: var(--a-muted) }
+.dialog .f { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #171717; color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 90; font-size: 13.5px; box-shadow: 0 8px 24px rgba(0,0,0,.25); max-width: 90vw }
+
+/* ── learner app (Socials) ── */
+.learner { background: var(--l-bg-1); color: var(--l-fg); flex: 1; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; font-family: var(--font) }
+.l-nav { background: var(--l-bg-2); border-bottom: 1px solid var(--l-border); height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px }
+.l-nav .brand { display: flex; gap: 8px; align-items: center; font-weight: 700; min-width: 0 }
+.l-nav .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--l-primary); color: #fff; display: grid; place-items: center; font-size: 13px; flex: none }
+.l-pills { display: flex; gap: 4px; margin: 0 auto; overflow-x: auto }
+.l-pills span { padding: 6px 12px; border-radius: 99px; font-size: 13px; color: var(--l-hint); white-space: nowrap }
+.l-pills span.on { border: 1px solid var(--l-border); color: var(--l-fg); font-weight: 600 }
+.l-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 0 }
+@media (max-width: 760px) { .l-body { grid-template-columns: minmax(0, 1fr) } .l-side { display: none } }
+.l-side { background: var(--l-bg-2); border-right: 1px solid var(--l-border); padding: 12px 10px; overflow-y: auto; display: grid; gap: 2px; align-content: start }
+.l-side .sec { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--l-hint); padding: 10px 10px 4px }
+.l-space { border: 0; background: none; text-align: left; padding: 8px 10px; border-radius: 8px; display: flex; gap: 8px; align-items: center; font-size: 13.5px; width: 100% }
+.l-space i { width: 10px; height: 10px; border-radius: 50%; flex: none }
+.l-space:hover { background: var(--l-bg-1) }
+.l-space.on { background: var(--l-fg); color: var(--l-bg-2); font-weight: 600 }
+.l-space.off { color: var(--l-hint) }
+.l-main { overflow-y: auto; padding: 16px; display: grid; gap: 12px; align-content: start; min-width: 0 }
+.l-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
+.l-head h2 { margin: 0; font-size: 20px; display: flex; gap: 8px; align-items: center }
+.l-head h2 i { width: 10px; height: 10px; border-radius: 50%; display: inline-block }
+.lcard { background: var(--l-bg-2); border: 1px solid var(--l-border); border-radius: var(--l-radius); padding: 14px 16px; display: grid; gap: 10px; min-width: 0 }
+.l-btn { border: 0; border-radius: 8px; padding: 7px 14px; font-weight: 600; font-size: 13.5px; background: var(--l-primary); color: #fff }
+.l-btn.ghost { background: var(--l-bg-1); color: var(--l-fg) }
+.l-btn[disabled] { opacity: .5; cursor: not-allowed }
+.l-inp { width: 100%; border: 1px solid var(--l-border); background: var(--l-bg-2); border-radius: 8px; padding: 9px 11px; font-size: 14px }
+.l-inp:focus { outline: none; border-color: var(--l-primary); box-shadow: 0 0 0 3px var(--l-primary-soft) }
+textarea.l-inp { min-height: 70px; resize: vertical }
+.start { display: flex; gap: 10px; align-items: center; border: 1px solid var(--l-border); background: var(--l-bg-2); border-radius: var(--l-radius); padding: 10px 14px; width: 100%; text-align: left; color: var(--l-hint) }
+.imgs { display: flex; gap: 8px; flex-wrap: wrap }
+.imgpick { border: 1px solid var(--l-border); background: var(--l-bg-2); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; display: flex; gap: 6px; align-items: center }
+.imgpick[aria-pressed="true"] { border-color: var(--l-primary); background: var(--l-primary-soft); color: var(--l-primary); font-weight: 600 }
+.demo-box { border: 1px dashed #c9a23b; background: #fffaf0; border-radius: 10px; padding: 8px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: #6b4e00 }
+.demo-box select { border: 1px solid #e3cf95; background: #fff; border-radius: 6px; padding: 4px 6px; font-size: 12.5px; max-width: 100% }
+.post { background: var(--l-bg-2); border: 1px solid var(--l-border); border-radius: var(--l-radius); padding: 14px 16px; display: grid; gap: 10px; min-width: 0 }
+.post.faded { opacity: .92 }
+.post h3 { margin: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere }
+.authorrow { display: flex; gap: 10px; align-items: center }
+.authorrow .n { font-weight: 600; font-size: 13.5px; display: flex; gap: 6px; align-items: center }
+.authorrow .s { color: var(--l-hint); font-size: 12px }
+.role { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; background: var(--l-primary-soft); color: var(--l-primary) }
+.post p.body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere }
+.pimg { border-radius: 10px; padding: 20px 14px; font-size: 13px; color: #3c3f45; border: 1px solid var(--l-border); display: grid; gap: 4px }
+.pimg small { color: var(--l-hint) }
+.pacts { display: flex; gap: 16px; color: var(--l-hint); font-size: 13px; border-top: 1px solid var(--l-border); padding-top: 8px; align-items: center; flex-wrap: wrap }
+.pacts button { border: 0; background: none; color: inherit; padding: 2px 0; font-size: 13px }
+.pacts .more { margin-left: auto; position: relative }
+.menu { position: absolute; right: 0; top: 100%; background: var(--l-bg-2); border: 1px solid var(--l-border); border-radius: 10px; box-shadow: 0 10px 24px rgba(0,0,0,.12); padding: 4px; z-index: 5; min-width: 150px; display: grid }
+.menu button { text-align: left; padding: 7px 10px; border-radius: 6px; color: var(--l-fg) }
+.menu button:hover { background: var(--l-bg-1) }
+.note { border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; font-size: 13.5px }
+.note b { font-size: 13.5px }
+.note.wait { background: var(--l-warn-soft); color: var(--l-warn) }
+.note.bad { background: var(--l-danger-soft); color: var(--l-danger) }
+.note.ok { background: var(--l-ok-soft); color: var(--l-ok) }
+.note.info { background: var(--l-info-soft); color: var(--l-info) }
+.note.care { background: #f1ecfb; color: #4b2a8f }
+.note .x { color: inherit; opacity: .85 }
+.onlyyou { font-size: 11.5px; color: var(--l-hint); display: flex; gap: 6px; align-items: center }
+.comments { display: grid; gap: 8px; border-top: 1px solid var(--l-border); padding-top: 10px }
+.cmt { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px }
+.cmt .bubble { background: var(--l-bg-1); border-radius: 10px; padding: 8px 10px; display: grid; gap: 4px; min-width: 0 }
+.cmt .bubble b { font-size: 12.5px }
+.reply { display: flex; gap: 8px; align-items: flex-start }
+.lmodal-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: grid; place-items: center; padding: 16px }
+.lmodal { background: var(--l-bg-2); border-radius: 14px; width: min(440px, 100%); padding: 20px; display: grid; gap: 12px }
+.lmodal h3 { margin: 0 }
+.rules-list { display: grid; gap: 6px; font-size: 13.5px }
+.rules-list div { display: grid; gap: 1px }
+.rules-list span { color: var(--l-hint); font-size: 12.5px }
+
+/* ── behind the scenes ── */
+.logbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; background: var(--d-bg); color: var(--d-fg); border-top: 1px solid var(--d-line); height: 30vh; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom, 0px) }
+.logbar .h { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; gap: 10px; border-bottom: 1px solid var(--d-line); flex-wrap: wrap }
+.logbar .h b { font-size: 13px }
+.lanes { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--d-muted) }
+.lanes span { display: inline-flex; gap: 5px; align-items: center }
+.lanes span::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--c) }
+.logs { overflow-y: auto; padding: 6px 14px 10px; display: grid; gap: 3px; font-size: 12.5px }
+.lg { display: grid; grid-template-columns: 52px 92px minmax(0, 1fr); gap: 8px; align-items: baseline }
+.lg .tm { font-family: var(--mono); color: var(--d-muted); font-size: 11.5px }
+.lg .ln { font-size: 11px; font-weight: 700; color: var(--c) }
+.lg .tx { overflow-wrap: anywhere }
+.lg .tx .assume { margin-left: 6px }
+@media (max-width: 600px) { .lg { grid-template-columns: 40px minmax(0, 1fr) } .lg .ln { display: none } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important } }
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
+.checking { animation: pulse 1.2s infinite }
+
+</style>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/preact/standalone.umd.js"></script>
+<script>
+// Moderation engine for the prototype. Plain JS, no DOM. Mirrors HLD §4 (gates ①–④, write, submit),
+// §5 (review mode × moderation mode), §9 (deadlines, failures), §8/§10 (decisions + outcome call), and the
+// User Stories' system rules. Places where stories + HLD are silent are marked ASSUMPTION and surfaced in the UI.
+(function (root) {
+  'use strict';
+
+  // ── sample data (clearly sample: the stories say ten Learnyst rules exist but do not list them) ──
+  const SAMPLE_RULES = [
+    { name: 'Be civil', description: 'No insults, bullying or personal attacks.', action: 'BLOCK',
+      words: ['idiot', 'stupid', 'loser'], signals: ['idiot', 'stupid', 'loser', 'dumb', 'shut up'] },
+    { name: 'No hate speech', description: 'Nothing that attacks caste, religion, gender, disability or origin.', action: 'BLOCK',
+      words: [], signals: ['go back to your country', 'people like you are'] },
+    { name: 'No sexual content', description: 'No sexual or explicit content.', action: 'BLOCK', words: [], signals: ['nude', 'sexy pics'] },
+    { name: 'No threats or violence', description: 'No threats to hurt anyone.', action: 'BLOCK', words: [], signals: ['i will hurt', 'beat you', 'find you after class'] },
+    { name: 'No self-harm content', description: 'Content about hurting yourself needs a person to look at it.', action: 'HOLD', selfHarm: true,
+      words: [], signals: ['kill myself', 'end my life', 'want to die', 'hurt myself', 'no reason to live'] },
+    { name: 'No spam or advertising', description: 'No promotions, advertising or selling of any kind.', action: 'BLOCK',
+      words: ['t.me', 'bit.ly'], signals: ['discount', 'buy now', 'offer', 'free notes for', 'join my', 'dm me', 'lower fees'] },
+    { name: 'No scams or fraud', description: 'No money-doubling, fake jobs or pay-first offers.', action: 'BLOCK', words: [], signals: ['double your money', 'pay first', 'guaranteed returns'] },
+    { name: 'No sharing phone numbers, emails or outside links', description: 'Keep contact details and outside links out of the community.', action: 'HOLD',
+      words: [], signals: ['@gmail.com', 'whatsapp', 'call me on'], patterns: ['phone', 'email'] },
+    { name: 'No promoting other academies', description: 'No promoting other academies, coaching centres or courses.', action: 'BLOCK',
+      words: ['rivalacademy.com', 'xyz academy'], signals: ['coaching centre', 'other academy', 'better academy', 'xyz academy'] },
+    { name: 'Stay on topic', description: 'Keep posts about learning and this academy.', action: 'GUIDANCE', words: [], signals: ['cricket score', 'movie review'] },
+  ];
+
+  const PRODUCTS = [
+    { id: 'p1', type: 'Course', name: 'NEET Biology 2027' },
+    { id: 'p2', type: 'Batch', name: 'JEE Crash Batch — Oct' },
+  ];
+  const PLACES = [
+    { id: 'community', label: 'Community', space: 'NEET 2027 Doubts', productId: null },
+    { id: 'feeds', label: 'Feeds', space: 'Feed', productId: null },
+    { id: 'product_discussions', label: 'Product discussions', space: 'NEET Biology 2027 · Discussion', productId: 'p1' },
+    { id: 'newsfeed', label: 'Newsfeed', space: 'Newsfeed', productId: null },
+  ];
+  const PEOPLE = {
+    asha: { id: 'asha', name: 'Asha K', role: 'Learner', joined: 'Jan 2026', courses: ['NEET Biology 2027'], postsWritten: 48 },
+    ravi: { id: 'ravi', name: 'Ravi M', role: 'Learner', joined: 'Mar 2026', courses: ['NEET Biology 2027', 'JEE Crash Batch — Oct'], postsWritten: 12 },
+    meera: { id: 'meera', name: 'Meera S', role: 'Teacher', joined: 'Staff', courses: [], postsWritten: 90 },
+  };
+  const SAMPLE_IMAGES = [
+    { id: 'img-notes', label: 'Photo of handwritten notes', text: 'Mitochondria is the powerhouse of the cell', tone: 'var(--img-a)' },
+    { id: 'img-phone', label: 'Screenshot with a phone number', text: 'Call me on 9876543210 for answers', tone: 'var(--img-b)' },
+    { id: 'img-poster', label: 'Rival academy poster', text: 'Join XYZ Academy — lower fees, rivalacademy.com', tone: 'var(--img-c)' },
+  ];
+
+  // ── disguise-aware matching (HLD §3: capitals, spacing, numbers-for-letters, symbol wildcards, stretched letters;
+  //    story notes: a web address also covers its subpages) ──
+  const LEET = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's', '!': 'i' };
+  const squash = s => s.toLowerCase().split('').map(c => LEET[c] || c).join('').replace(/(.)\1{2,}/g, '$1$1');
+  const lettersOnly = s => squash(s).replace(/[^a-z0-9]/g, '');
+  function wordMatches(entry, text) {
+    const e = entry.trim().toLowerCase();
+    if (!e) return null;
+    const isAddress = /\.[a-z]{2,}/.test(e) && !/\s/.test(e);
+    if (isAddress) {
+      const host = e.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+      const re = new RegExp('(?:https?:\\/\\/)?(?:www\\.)?' + host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:\\/\\S*)?', 'i');
+      const m = text.match(re);
+      return m ? m[0] : null;
+    }
+    const target = lettersOnly(e);
+    const tokens = text.split(/\s+/);
+    // single tokens with disguises (1d10t, IDIOT, idiiiot, id**t)
+    for (const raw of tokens) {
+      const t = raw.replace(/^[^a-z0-9@$*]+|[^a-z0-9@$*]+$/gi, '');
+      const lt = lettersOnly(t);
+      if (lt && (lt === target || lt.replace(/(.)\1+/g, '$1') === target.replace(/(.)\1+/g, '$1'))) return raw;
+      const wild = t.toLowerCase().replace(/[^a-z0-9*]/g, '');
+      if (wild.includes('*') && wild.length === target.length) {
+        const re = new RegExp('^' + wild.replace(/\*/g, '.') + '$');
+        if (re.test(target)) return raw;
+      }
+    }
+    // spaced-out letters: "i d i o t"
+    const joined = lettersOnly(text.replace(/\s+/g, ''));
+    if (target.length >= 4 && joined.includes(target)) {
+      const spaced = new RegExp(target.split('').join('[\\s._-]*'), 'i');
+      const m = squash(text).match(spaced);
+      if (m && /\s/.test(m[0])) return m[0];
+    }
+    // multi-word entries
+    if (/\s/.test(e) && squash(text).includes(squash(e))) return e;
+    return null;
+  }
+
+  function createEngine() {
+    const S = {
+      clock: 0,                     // simulated minutes since start
+      settingsVersion: 0,
+      seq: 1, checkSeq: 1,
+      role: 'Teacher',
+      aiServer: 'up',               // up | down | slow
+      settings: {
+        enabled: true,
+        places: { product_discussions: true, community: true, feeds: true, newsfeed: true },
+        reviewMode: 'REVIEW_FIRST', // stated default (glossary, SR 15)
+        moderationMode: 'COPILOT',  // ASSUMPTION: default not stated (C23)
+        description: 'NEET and JEE coaching academy for class 11 and 12 students.',
+        ageGroup: 'UNDER_18', tone: 'CASUAL',
+        removalsBeforeRestriction: 3,
+        repeatCount: 3, repeatWindow: 10,
+        holdFirstEnabled: false, holdFirstCount: 2,
+      },
+      exceptions: [],               // { id, productId, reviewMode|null, moderationMode|null, disabledRuleIds: [] }
+      rules: [], words: [], deletedDefaults: [],
+      content: [],                  // posts and comments
+      queue: [], checks: [], reports: [], log: [], records: [],
+      members: { asha: { restricted: null, bans: [], removals: 0, firstPostsLeft: null }, ravi: { restricted: null, bans: [], removals: 0, firstPostsLeft: null }, meera: { restricted: null, bans: [], removals: 0, firstPostsLeft: null } },
+      toast: null,
+      listeners: new Set(),
+    };
+    SAMPLE_RULES.forEach((r, i) => {
+      const id = 'r' + (i + 1);
+      S.rules.push({ id, number: i + 1, name: r.name, description: r.description, action: r.action, aiCheck: true,
+        pinned: !!r.selfHarm, reportReason: r.name, status: 'PUBLISHED', source: 'LEARNYST', selfHarm: !!r.selfHarm,
+        signals: r.signals, patterns: r.patterns || [], publishedAt: 0 });
+      r.words.forEach(w => S.words.push({ id: 'w' + S.seq++, ruleId: id, value: w, addedBy: 'LEARNYST', at: 0 }));
+    });
+
+    const emit = () => S.listeners.forEach(f => f());
+    const log = (lane, text, extra) => { S.log.unshift({ id: S.seq++, t: S.clock, lane, text, ...extra }); };
+    const toast = (text, kind = 'ok') => { S.toast = { text, kind, id: S.seq++ }; };
+    const rule = id => S.rules.find(r => r.id === id);
+    const person = id => PEOPLE[id];
+    const place = id => PLACES.find(p => p.id === id);
+    const fmtRule = r => `Rule ${r.number}: ${r.name}`;
+
+    // settings resolution — exception for the product, then the academy (SR 5, HLD §13)
+    function effective(productId) {
+      const ex = productId && S.exceptions.find(e => e.productId === productId);
+      return {
+        reviewMode: (ex && ex.reviewMode) || S.settings.reviewMode,
+        moderationMode: (ex && ex.moderationMode) || S.settings.moderationMode,
+        rules: S.rules.filter(r => r.status === 'PUBLISHED' && !(ex && ex.disabledRuleIds.includes(r.id))),
+        exception: ex || null,
+      };
+    }
+
+    function matchWords(text, rules) {
+      for (const r of rules) {
+        for (const w of S.words.filter(w => w.ruleId === r.id)) {
+          const hit = wordMatches(w.value, text);
+          if (hit) return { rule: r, word: w.value, hit };
+        }
+      }
+      return null;
+    }
+
+    // simulated classifier — stands in for ai-server (HLD §11). Keyword signals per sample rule; academy rules
+    // match on words taken from their own description. The demo can also force a verdict.
+    function classify(text, rules, forced) {
+      if (forced && forced !== 'auto') {
+        if (forced === 'clean') return { breaks: false };
+        const r = rules.find(x => x.id === forced);
+        return r ? { breaks: true, rule: r, reason: `Demo forced a verdict for ${fmtRule(r)}.`, confidence: 'high' } : { breaks: false };
+      }
+      const low = text.toLowerCase();
+      const hits = [];
+      for (const r of rules.filter(r => r.aiCheck)) {
+        let sig = (r.signals || []).find(s => low.includes(s));
+        if (!sig && r.patterns.includes('phone') && /\b\d{10}\b/.test(text)) sig = 'a 10-digit phone number';
+        if (!sig && r.patterns.includes('email') && /\S+@\S+\.\S+/.test(text)) sig = 'an email address';
+        if (!sig && r.source === 'ACADEMY') {
+          const keys = r.description.toLowerCase().split(/[^a-z]+/).filter(k => k.length > 5 && !['nothing', 'content', 'posts', 'should', 'please', 'people'].includes(k));
+          sig = keys.find(k => low.includes(k));
+        }
+        if (sig) hits.push({ r, sig });
+      }
+      if (!hits.length) return { breaks: false };
+      // most severe: Block over Hold over Report over Guidance (HLD §10)
+      const order = { BLOCK: 0, HOLD: 1, REPORT: 2, GUIDANCE: 3 };
+      hits.sort((a, b) => order[a.r.action] - order[b.r.action]);
+      const { r, sig } = hits[0];
+      return { breaks: true, rule: r, reason: `${fmtRule(r)} — the text mentions "${sig}", which reads as breaking "${r.description}"`, confidence: hits.length > 1 ? 'high' : 'medium' };
+    }
+
+    function textOf(c) {
+      const img = c.image ? SAMPLE_IMAGES.find(i => i.id === c.image) : null;
+      return [c.title, c.body, img && img.text].filter(Boolean).join(' \n ');
+    }
+
+    function noticeFor(r, kind, afterPublishing) {
+      if (r && r.selfHarm) return { kind: 'SELF_HARM', afterPublishing };
+      return { kind, rule: r ? { number: r.number, name: r.name, description: r.description } : null, afterPublishing };
+    }
+
+    function addQueue(c, source, extra = {}) {
+      let q = S.queue.find(x => x.contentId === c.id && x.status === 'PENDING');
+      if (q) { Object.assign(q, extra); if (source === 'LEARNER_REPORT') q.reportCount = (q.reportCount || 0) + 1; return q; }
+      q = { id: 'q' + S.seq++, contentId: c.id, version: c.version, source, status: 'PENDING', tab: extra.tab || (source === 'LEARNER_REPORT' ? 'REPORTED' : source === 'UNCHECKED' ? 'UNCHECKED' : 'NEEDS_REVIEW'),
+        since: S.clock, reportCount: source === 'LEARNER_REPORT' ? 1 : 0, ...extra };
+      S.queue.unshift(q);
+      log('rails', `Queue item opened (${q.tab.replace('_', ' ').toLowerCase()}) — ${q.why || source}`);
+      return q;
+    }
+
+    // ── learner writes (HLD §4) ──
+    function submit({ author, placeId, title, body, image, parentId, forced, editOf, instant }) {
+      const pl = place(placeId);
+      const productId = pl.productId;
+      const who = person(author);
+      const isEdit = !!editOf;
+      const text = [title, body, image ? SAMPLE_IMAGES.find(i => i.id === image).text : ''].filter(Boolean).join(' ');
+      log('learner', `${who.name} ${isEdit ? 'edits' : parentId ? 'comments' : 'posts'} in ${pl.space}${image ? ' (with an image)' : ''}`);
+      log('rails', `Mutation received — the learner gets an answer straight away (HLD §4)`);
+
+      // ① moderation on for the academy and this place?
+      if (!S.settings.enabled || !S.settings.places[placeId]) {
+        const c = write({ author, placeId, productId, title, body, image, parentId, editOf, state: 'LIVE', checked: 'NOT_MODERATED' });
+        log('rails', `① Moderation is off ${!S.settings.enabled ? 'for the academy' : 'for ' + pl.label} — published, not checked (rows 2–3)`);
+        emit(); return { ok: true, content: c };
+      }
+      // staff are not the subject here; the prototype only lets learners post
+      // ban check — stories 48–49 (where in the flow is not stated)
+      const m = S.members[author];
+      const ban = m.bans.find(b => b.scope === 'ACADEMY' || (b.scope === 'PRODUCT' && b.productId === productId));
+      if (ban) {
+        log('rails', `Refused — ${who.name} is banned ${ban.scope === 'ACADEMY' ? 'from the academy' : 'from this product'} (rows 48–49). Enrolment untouched (SR 14)`);
+        emit(); return { ok: false, error: 'BANNED', ban };
+      }
+      const eff = effective(productId);
+      // ② blocked words — local, no AI (HLD §4, glossary)
+      const hit = matchWords(text, eff.rules);
+      if (hit) {
+        S.records.unshift({ id: 'b' + S.seq++, author, placeId, text, ruleId: hit.rule.id, word: hit.word, at: S.clock });
+        if (isEdit) { const c = S.content.find(x => x.id === editOf); c.state = 'BLOCKED'; c.notice = noticeFor(hit.rule, 'BLOCKED', c.wasLive); }
+        log('rails', `② Blocked word "${hit.word}" on ${fmtRule(hit.rule)} matched "${hit.hit}" — stopped on sight, no AI call. A record is kept (SR 11)`, { assumption: 'C4' });
+        emit(); return { ok: false, error: 'BLOCKED', rule: hit.rule, selfHarm: hit.rule.selfHarm };
+      }
+      // ③ repeat post — local
+      const recent = S.content.filter(x => x.author === author && !x.parentId === !parentId && (x.body || '').trim().toLowerCase() === (body || '').trim().toLowerCase() && S.clock - x.createdAt <= S.settings.repeatWindow);
+      const repeat = !isEdit && body && recent.length + 1 >= S.settings.repeatCount;
+      // ④ restricted — local (SR 16)
+      const restricted = !!m.restricted;
+      const firstHold = S.settings.holdFirstEnabled && (m.firstPostsLeft ?? S.settings.holdFirstCount) > 0;
+
+      if (repeat || restricted) {
+        const c = write({ author, placeId, productId, title, body, image, parentId, editOf, state: 'HELD', checked: 'NOT_SENT' });
+        c.notice = { kind: 'WAITING', rule: null, reason: restricted ? 'RESTRICTED' : 'REPEAT' };
+        log('rails', restricted ? `④ ${who.name} is restricted — held for review, no AI call (SR 16, HLD §4)` : `③ Repeat post (${recent.length + 1} in ${S.settings.repeatWindow} min) — held, no AI call`, { assumption: restricted ? null : 'N3' });
+        addQueue(c, restricted ? 'RESTRICTED_MEMBER' : 'REPEAT_POST', { why: restricted ? 'Restricted member' : 'Repeat post' });
+        emit(); return { ok: true, content: c };
+      }
+
+      const held = eff.reviewMode === 'REVIEW_FIRST' || firstHold;
+      const c = write({ author, placeId, productId, title, body, image, parentId, editOf, state: held ? 'HELD' : 'LIVE', checked: 'PENDING' });
+      if (firstHold) { m.firstPostsLeft = (m.firstPostsLeft ?? S.settings.holdFirstCount) - 1; }
+      c.notice = held ? { kind: 'WAITING', rule: null, reason: firstHold && eff.reviewMode !== 'REVIEW_FIRST' ? 'FIRST_POSTS' : 'CHECK' } : null;
+      log('rails', held ? `Written HELD — only ${who.name} sees it, marked "waiting for review" (${firstHold && eff.reviewMode !== 'REVIEW_FIRST' ? 'new learner\'s first posts, row 9' : 'review first'})` : `Written LIVE — everyone sees it (publish first)`);
+
+      if (eff.moderationMode === 'AI_DISABLED') {
+        c.checked = 'NOT_SENT';
+        if (held && !firstHold) { c.state = 'LIVE'; c.notice = null; log('rails', 'AI disabled — no check is sent; after the local checks the post goes live', { assumption: 'inferred' }); }
+        else if (firstHold) addQueue(c, 'FIRST_POSTS_HOLD', { why: "New learner's first posts" });
+        emit(); return { ok: true, content: c };
+      }
+      if (firstHold) addQueue(c, 'FIRST_POSTS_HOLD', { why: "New learner's first posts" });
+      sendCheck(c, eff, isEdit ? 'edit' : 'create', forced, instant);
+      emit(); return { ok: true, content: c };
+    }
+
+    function write({ author, placeId, productId, title, body, image, parentId, editOf, state, checked }) {
+      if (editOf) {
+        const c = S.content.find(x => x.id === editOf);
+        c.versions.push({ version: c.version, title: c.title, body: c.body, image: c.image, at: S.clock });
+        c.version += 1; c.title = title; c.body = body; c.image = image;
+        c.state = state;
+        if (state === 'LIVE') c.wasLive = true;
+        c.checked = checked; c.notice = null; c.editedAt = S.clock;
+        log('rails', `Edit saved — content_version ${c.version - 1} → ${c.version}; the old version is kept (HLD §10, row 39)`);
+        return c;
+      }
+      const c = { id: 'c' + S.seq++, author, placeId, productId, title, body, image, parentId: parentId || null, state, checked,
+        version: 1, versions: [], createdAt: S.clock, wasLive: state === 'LIVE', notice: null, likes: 0 };
+      S.content.unshift(c);
+      return c;
+    }
+
+    function sendCheck(c, eff, trigger, forced, instant) {
+      const rules = eff.rules.filter(r => r.aiCheck);
+      if (!rules.length) { c.checked = 'NOT_SENT'; if (c.state === 'HELD') { c.state = 'LIVE'; c.notice = null; } log('rails', 'No rule in force has AI checking on — nothing to send', { assumption: 'C15' }); return; }
+      const reqId = 'req-' + (S.checkSeq++).toString().padStart(4, '0');
+      if (S.aiServer === 'down') {
+        log('rails', `POST /api/moderation/check failed — ai-server is down`);
+        markUnchecked(c, 'Submit failed — ai-server down');
+        return;
+      }
+      const ck = { reqId, contentId: c.id, version: c.version, trigger, state: 'PENDING', sentAt: S.clock,
+        deadline: S.clock + (trigger === 'catchup' ? 15 : 5), forced, reviewHeld: c.state === 'HELD' };
+      S.checks.unshift(ck);
+      c.reqId = reqId;
+      log('rails', `→ ai-server POST /api/moderation/check { trigger: ${trigger}, content_version: ${c.version}, rules: ${rules.length} }`);
+      log('ai', `202 Accepted { request_id: "${reqId}" } — a receipt, not an answer. Queued on the ${trigger === 'catchup' ? 'bulk' : 'live'} lane`);
+      if (S.aiServer === 'slow') { log('ai', `…slow: no verdict yet. Rails' deadline is ${ck.deadline - S.clock} min (HLD §9)`); return; }
+      if (instant) { deliver(ck); return; }
+      ck.pendingUi = true;
+      ck.timer = setTimeout(() => { ck.pendingUi = false; deliver(ck); emit(); }, 1400);
+    }
+
+    function deliver(ck, late) {
+      if (ck.state !== 'PENDING' && ck.state !== 'UNCHECKED') return;
+      const c = S.content.find(x => x.id === ck.contentId);
+      if (!c) return;
+      const eff = effective(c.productId);
+      const v = classify(textOf(c), eff.rules.filter(r => r.aiCheck), ck.forced);
+      log('ai', v.breaks ? `classify → breaks_rule: true, rule_id: ${v.rule.id}, confidence: ${v.confidence}` : 'classify → breaks_rule: false (clean)');
+      log('ai', `→ Rails POST /internal/v1/moderation/result { request_id: "${ck.reqId}", content_version: ${ck.version}, status: ok }`);
+      if (c.version !== ck.version) { ck.state = 'DROPPED'; log('rails', `Dropped — content_version ${ck.version} is stale (now ${c.version}). 200 OK (HLD §10)`); return; }
+      const wasUnchecked = ck.state === 'UNCHECKED';
+      ck.state = 'DONE'; ck.verdict = v; c.checked = 'CHECKED'; c.aiReason = v.reason || null; c.aiConfidence = v.confidence || null;
+      if (wasUnchecked) {
+        const uq = S.queue.find(q => q.contentId === c.id && q.tab === 'UNCHECKED' && q.status === 'PENDING');
+        if (uq) { uq.status = 'CHECKED_LATE'; }
+        log('rails', 'Late verdict — still applied (HLD §9)');
+      }
+      applyVerdict(c, v, eff);
+    }
+
+    function applyVerdict(c, v, eff) {
+      const who = person(c.author);
+      if (!v.breaks) {
+        if (c.state === 'HELD' && !(S.queue.find(q => q.contentId === c.id && q.status === 'PENDING' && q.source === 'FIRST_POSTS_HOLD'))) {
+          c.state = 'LIVE'; c.wasLive = true; c.notice = { kind: 'LIVE_AFTER_CHECK' };
+          log('rails', 'Clean → published. Others can now see it');
+        } else log('rails', 'Clean → nothing changes');
+        return;
+      }
+      const r = v.rule;
+      const mode = r.pinned ? 'COPILOT' : eff.moderationMode;
+      const whyLine = `AI: ${fmtRule(r)}`;
+      if (mode === 'COPILOT') {
+        // HLD §5: nothing stopped automatically; flagged content waits for a person
+        if (c.state === 'HELD') c.notice = noticeFor(r, 'WAITING', false);
+        log('rails', `${r.pinned ? 'Rule is pinned to Copilot' : 'Copilot'} — nothing is stopped automatically. ${c.state === 'HELD' ? 'Stays held' : 'Stays live'} and waits for a person (HLD §5)`);
+        addQueue(c, 'AI_CHECK', { ruleId: r.id, why: whyLine, reason: v.reason, confidence: v.confidence });
+        return;
+      }
+      // Autopilot: the rule's action applies (glossary). What each action does is not defined — N1.
+      const live = c.state === 'LIVE';
+      if (r.action === 'BLOCK') {
+        c.state = 'BLOCKED'; c.notice = noticeFor(r, 'BLOCKED', live);
+        S.records.unshift({ id: 'b' + S.seq++, author: c.author, placeId: c.placeId, text: textOf(c), ruleId: r.id, word: null, at: S.clock, byAi: true });
+        log('rails', `Autopilot + Block → ${live ? 'taken down' : 'never shown'}; ${who.name} sees the rule. Not queued`, { assumption: 'N1 · C20' });
+      } else if (r.action === 'HOLD') {
+        c.state = 'HELD'; c.notice = noticeFor(r, 'WAITING', live);
+        log('rails', `Autopilot + Hold → ${live ? 'comes down and is ' : ''}held for a person`, { assumption: 'N1' });
+        addQueue(c, 'AI_CHECK', { ruleId: r.id, why: whyLine, reason: v.reason, confidence: v.confidence });
+      } else if (r.action === 'REPORT') {
+        if (c.state === 'HELD') { c.state = 'LIVE'; c.wasLive = true; }
+        c.notice = null;
+        log('rails', 'Autopilot + Report → stays live, goes to the queue; the learner is told nothing', { assumption: 'N1' });
+        addQueue(c, 'AI_CHECK', { ruleId: r.id, why: whyLine, reason: v.reason, confidence: v.confidence });
+      } else if (r.action === 'GUIDANCE') {
+        if (c.state === 'HELD') { c.state = 'LIVE'; c.wasLive = true; }
+        c.notice = noticeFor(r, 'GUIDANCE', false);
+        log('rails', 'Autopilot + Guidance → live, with a gentle note for the learner (row 79)', { assumption: 'N1 · C16' });
+      }
+    }
+
+    function markUnchecked(c, why) {
+      if (c.state === 'HELD') { c.state = 'LIVE'; c.wasLive = true; }
+      c.checked = 'UNCHECKED'; c.notice = c.notice && c.notice.kind === 'WAITING' ? null : c.notice;
+      log('rails', `${why} → published and filed under Unchecked (HLD §9). Blocked words, repeat posts and restrictions were already checked`);
+      addQueue(c, 'UNCHECKED', { why: 'Published without a check', tab: 'UNCHECKED' });
+    }
+
+    // demo data: content that already existed before the demo started (not run through the pipeline)
+    function addExisting({ author, placeId, title, body, image, at }) {
+      const pl = place(placeId);
+      const c = write({ author, placeId, productId: pl.productId, title, body, image, parentId: null, editOf: null, state: 'LIVE', checked: 'CHECKED' });
+      c.createdAt = at ?? S.clock; return c;
+    }
+
+    // fast-forward the simulated clock (deadlines, HLD §9)
+    function advance(minutes) {
+      S.clock += minutes;
+      log('rails', `⏱ ${minutes} minutes pass`);
+      for (const ck of S.checks.filter(k => k.state === 'PENDING')) {
+        if (S.clock >= ck.deadline) {
+          ck.state = 'UNCHECKED';
+          const c = S.content.find(x => x.id === ck.contentId);
+          if (c) markUnchecked(c, `Deadline (${ck.trigger === 'catchup' ? 15 : 5} min) passed with no verdict`);
+        }
+      }
+      emit();
+    }
+    function deliverLate() {
+      const pend = S.checks.filter(k => (k.state === 'PENDING' || k.state === 'UNCHECKED'));
+      if (!pend.length) return false;
+      pend.forEach(k => deliver(k, true)); emit(); return true;
+    }
+    function catchup(qid) {
+      const q = S.queue.find(x => x.id === qid);
+      const c = q && S.content.find(x => x.id === q.contentId);
+      if (!c) return;
+      q.status = 'RESUBMITTED';
+      log('rails', 'Re-checking Unchecked content (trigger: catchup, 15-minute deadline). When this runs is open (C22)', { assumption: 'C22' });
+      sendCheck(c, effective(c.productId), 'catchup', 'auto'); emit();
+    }
+
+    // ── learner reports (HLD §7) ──
+    function report(reporter, contentId, ruleId, note) {
+      const c = S.content.find(x => x.id === contentId);
+      S.reports.unshift({ id: 'rep' + S.seq++, reporter, contentId, ruleId, note, at: S.clock });
+      log('learner', `${person(reporter).name} reports it under ${fmtRule(rule(ruleId))}${note ? ' with a note' : ''}`);
+      log('rails', 'content_report saved. No AI call — a report is a person saying something is wrong (HLD §7)');
+      addQueue(c, 'LEARNER_REPORT', { ruleId, why: `Reported: ${fmtRule(rule(ruleId))}`, note });
+      toast('Thanks — a Teacher will review it.'); emit();
+    }
+
+    // ── admin decisions (HLD §8) ──
+    const can = (action) => {
+      const t = S.role === 'Teacher';
+      return { approve: true, remove: true, restore: true, restrict: true, ban: t, example: t, rules: t, settings: t, lift: t }[action];
+    };
+    function outcome(c, o) {
+      if (c.reqId) log('rails', `→ ai-server POST /api/moderation/outcome { request_id: "${c.reqId}", outcome: "${o}" } — fire and forget (HLD §10)`);
+      else log('rails', 'No request_id on this content (never sent to ai-server) — no outcome call');
+    }
+    function approve(qid) {
+      const q = S.queue.find(x => x.id === qid); const c = S.content.find(x => x.id === q.contentId);
+      c.state = 'LIVE'; c.wasLive = true; c.notice = { kind: 'APPROVED' };
+      q.status = 'APPROVED'; q.tab = 'DONE'; q.decidedAt = S.clock; q.decidedBy = S.role;
+      S.queue.filter(x => x.contentId === c.id && x.status === 'PENDING').forEach(x => { x.status = 'APPROVED'; x.tab = 'DONE'; x.decidedAt = S.clock; });
+      log('admin', `${S.role} approves`); log('rails', 'Now live for everyone. Every action is recorded (SR 11)');
+      outcome(c, 'approved'); toast('Approved — the post is live.'); emit();
+    }
+    function remove(qid) {
+      const q = S.queue.find(x => x.id === qid); const c = S.content.find(x => x.id === q.contentId);
+      const r = rule(q.ruleId) || null;
+      const wasLive = c.state === 'LIVE';
+      c.state = 'REMOVED'; c.removedAt = S.clock; c.notice = noticeFor(r, 'REMOVED', wasLive);
+      q.status = 'REMOVED'; q.tab = 'DONE'; q.decidedAt = S.clock; q.decidedBy = S.role;
+      S.queue.filter(x => x.contentId === c.id && x.status === 'PENDING').forEach(x => { x.status = 'REMOVED'; x.tab = 'DONE'; x.decidedAt = S.clock; });
+      const m = S.members[c.author]; m.removals += 1;
+      log('admin', `${S.role} removes`); log('rails', `Taken down — kept and restorable for 90 days (SR 12). ${person(c.author).name}: ${m.removals} confirmed removal${m.removals > 1 ? 's' : ''}`);
+      outcome(c, 'removed');
+      let restrictedNow = false;
+      if (!m.restricted && m.removals >= S.settings.removalsBeforeRestriction) {
+        m.restricted = { since: S.clock, source: 'AUTOMATIC' }; restrictedNow = true;
+        log('rails', `${m.removals} confirmed removals ≥ ${S.settings.removalsBeforeRestriction} → restricted automatically (row 7, SR 10). Everything they post is now held`);
+      }
+      toast(restrictedNow ? `Removed. ${person(c.author).name} is now restricted (${m.removals} removals).` : 'Removed — restorable for 90 days.'); emit();
+      return { removals: m.removals, restrictedNow };
+    }
+    function restore(qid) {
+      const q = S.queue.find(x => x.id === qid); const c = S.content.find(x => x.id === q.contentId);
+      c.state = 'LIVE'; c.wasLive = true; c.notice = { kind: 'RESTORED' };
+      q.status = 'APPROVED'; q.restored = true; q.decidedAt = S.clock;
+      log('admin', `${S.role} restores`); log('rails', 'Back up for everyone');
+      outcome(c, 'restored'); toast('Restored.'); emit();
+    }
+    function markExample(qid) { const q = S.queue.find(x => x.id === qid); q.example = !q.example; log('admin', `${q.example ? 'Marked' : 'Unmarked'} as an example — sent in examples[] on future checks (row 46)`); emit(); }
+    function restrict(userId) {
+      const m = S.members[userId]; if (m.restricted) return;
+      m.restricted = { since: S.clock, source: S.role === 'Teacher' ? 'TEACHER' : 'TEACHING_ASSISTANT' };
+      log('admin', `${S.role} restricts ${person(userId).name} — academy-wide, everything they post is held (SR 13, 16)`); toast(`${person(userId).name} is restricted.`); emit();
+    }
+    function liftRestriction(userId) { const m = S.members[userId]; m.restricted = null; log('admin', `Restriction lifted for ${person(userId).name}`); toast('Restriction lifted.'); emit(); }
+    function ban(userId, scope, productId) {
+      const m = S.members[userId];
+      if (scope === 'ACADEMY') { m.bans = [{ id: 'ban' + S.seq++, scope, since: S.clock }]; log('admin', `Teacher bans ${person(userId).name} from the academy — replaces any product ban (SR 19). Course access stays (SR 14)`); }
+      else { m.bans.push({ id: 'ban' + S.seq++, scope, productId, since: S.clock }); log('admin', `Teacher bans ${person(userId).name} from ${PRODUCTS.find(p => p.id === productId).name}. Course access stays (SR 14)`); }
+      toast(`${person(userId).name} is banned ${scope === 'ACADEMY' ? 'from the academy' : 'from one product'}.`); emit();
+    }
+    function liftBan(userId, banId) { const m = S.members[userId]; m.bans = m.bans.filter(b => b.id !== banId); log('admin', `Ban lifted for ${person(userId).name}${' (lifting an academy ban clears both, SR 19)'}`); toast('Ban lifted.'); emit(); }
+    function removeBannedContent(userId, banId) {
+      const m = S.members[userId]; const b = m.bans.find(x => x.id === banId); if (!b) return 0;
+      let n = 0;
+      S.content.filter(c => c.author === userId && c.state !== 'REMOVED' && c.state !== 'BLOCKED' && (b.scope === 'ACADEMY' || c.productId === b.productId)).forEach(c => {
+        c.state = 'REMOVED'; c.removedAt = S.clock; c.notice = noticeFor(null, 'REMOVED', true); n++;
+        S.queue.filter(q => q.contentId === c.id && q.status === 'PENDING').forEach(q => { q.status = 'REMOVED'; q.tab = 'DONE'; q.decidedAt = S.clock; });
+      });
+      log('admin', `Removed ${n} item${n === 1 ? '' : 's'} ${person(userId).name} posted within the ban's scope (row 50)`); toast(`Removed ${n} item${n === 1 ? '' : 's'}.`); emit();
+      return n;
+    }
+
+    // ── rules and words (rows 17–34) ──
+    function saveRule(data) {
+      if (data.id) {
+        const r = rule(data.id); const wasPublished = r.status === 'PUBLISHED';
+        Object.assign(r, { name: data.name, description: data.description, action: data.action, aiCheck: data.aiCheck, pinned: data.pinned, reportReason: data.reportReason });
+        log('admin', `${fmtRule(r)} updated${wasPublished ? ' — applies to content posted from now on (SR 4)' : ''}`);
+        toast('Rule saved.'); emit(); return r;
+      }
+      const r = { id: 'r' + S.seq++, number: Math.max(0, ...S.rules.map(x => x.number)) + 1, name: data.name, description: data.description, action: data.action,
+        aiCheck: data.aiCheck, pinned: data.pinned, reportReason: data.reportReason || data.name, status: 'DRAFT', source: 'ACADEMY', selfHarm: false, signals: [], patterns: [] };
+      S.rules.push(r);
+      (data.words || []).forEach(w => w.trim() && S.words.push({ id: 'w' + S.seq++, ruleId: r.id, value: w.trim(), addedBy: 'ACADEMY', at: S.clock }));
+      log('admin', `${fmtRule(r)} created as a draft — it does nothing until published`); toast('Draft rule created.'); emit(); return r;
+    }
+    function setRuleStatus(id, status) {
+      const r = rule(id); r.status = status; if (status === 'PUBLISHED') r.publishedAt = S.clock;
+      log('admin', status === 'PUBLISHED' ? `${fmtRule(r)} published — shown to learners and enforced for content posted from now on (SR 4)` : `${fmtRule(r)} unpublished — back to draft, words kept`);
+      toast(status === 'PUBLISHED' ? 'Published.' : 'Unpublished.'); emit();
+    }
+    function deleteRule(id) { const r = rule(id); S.rules = S.rules.filter(x => x.id !== id); S.words = S.words.filter(w => w.ruleId !== id); log('admin', `${fmtRule(r)} deleted`); toast('Rule deleted.'); emit(); }
+    function addWord(ruleId, value) {
+      const v = value.trim(); if (!v) return 'EMPTY';
+      if (S.words.some(w => w.ruleId === ruleId && lettersOnly(w.value) === lettersOnly(v))) return 'DUPLICATE';
+      S.words.push({ id: 'w' + S.seq++, ruleId, value: v, addedBy: 'ACADEMY', at: S.clock });
+      log('admin', `Blocked ${/\.[a-z]{2,}/i.test(v) ? 'web address' : 'word'} "${v}" added to ${fmtRule(rule(ruleId))}`); emit(); return 'OK';
+    }
+    function deleteWord(id) { const w = S.words.find(x => x.id === id); S.words = S.words.filter(x => x.id !== id); if (w.addedBy === 'LEARNYST') S.deletedDefaults.push(w.value); log('admin', `Blocked word "${w.value}" deleted${w.addedBy === 'LEARNYST' ? ' — a Learnyst word stays deleted for this academy (SR 2)' : ''}`); emit(); }
+    function testRule(ruleId, sample) {
+      const r = rule(ruleId);
+      const words = S.words.filter(w => w.ruleId === ruleId).map(w => ({ word: w.value, hit: wordMatches(w.value, sample) })).filter(x => x.hit);
+      const ai = r.aiCheck ? classify(sample, [r], 'auto') : null;
+      return { words, ai };
+    }
+    function saveSettings(patch) { Object.assign(S.settings, JSON.parse(JSON.stringify(patch))); S.settingsVersion++; log('admin', 'Settings saved — changes apply to new content; nothing already up is re-checked'); toast('Settings saved.'); emit(); }
+    function saveException(ex) {
+      const i = S.exceptions.findIndex(e => e.productId === ex.productId);
+      if (i >= 0) S.exceptions[i] = { ...S.exceptions[i], ...ex }; else S.exceptions.push({ id: 'ex' + S.seq++, setOn: S.clock, ...ex });
+      log('admin', `Exception saved for ${PRODUCTS.find(p => p.id === ex.productId).name} — this product now resolves exception → academy (SR 5)`); toast('Exception saved.'); emit();
+    }
+    function deleteException(id) { S.exceptions = S.exceptions.filter(e => e.id !== id); log('admin', 'Exception removed — the product follows the academy again'); toast('Exception removed.'); emit(); }
+
+    // ── reports (rows 61–67) ──
+    function stats() {
+      const decided = S.queue.filter(q => q.decidedAt != null);
+      const pending = S.queue.filter(q => q.status === 'PENDING');
+      const checked = S.checks.filter(k => k.state === 'DONE').length;
+      const oldest = pending.length ? Math.max(...pending.map(q => S.clock - q.since)) : null;
+      const perRule = S.rules.map(r => {
+        const stoppedItems = S.queue.filter(q => q.ruleId === r.id && q.source !== 'LEARNER_REPORT');
+        const blocked = S.records.filter(b => b.ruleId === r.id).length;
+        const stopped = stoppedItems.length + blocked;
+        const approvedAnyway = stoppedItems.filter(q => q.status === 'APPROVED' && !q.restored).length;
+        const removed = stoppedItems.filter(q => q.status === 'REMOVED').length;
+        return { rule: r, stopped, approvedAnyway, removed, wrongFlag: stopped ? Math.round(100 * approvedAnyway / stopped) : null };
+      });
+      return {
+        checked, blocked: S.records.length,
+        held: S.queue.filter(q => q.source !== 'LEARNER_REPORT' && q.source !== 'UNCHECKED').length,
+        approvedAfterReview: decided.filter(q => q.status === 'APPROVED').length,
+        removed: decided.filter(q => q.status === 'REMOVED').length,
+        reported: S.reports.length, waiting: pending.length, oldest,
+        unchecked: S.queue.filter(q => q.source === 'UNCHECKED').length, perRule,
+      };
+    }
+
+
+    return {
+      S, PLACES, PRODUCTS, PEOPLE, SAMPLE_IMAGES,
+      on: f => { S.listeners.add(f); return () => S.listeners.delete(f); },
+      emit, effective, submit, addExisting, advance, deliverLate, catchup, report, approve, remove, restore, markExample,
+      restrict, liftRestriction, ban, liftBan, removeBannedContent, saveRule, setRuleStatus, deleteRule, addWord, deleteWord,
+      testRule, saveSettings, saveException, deleteException, stats, can, rule, person, place, wordMatches,
+      setRole: r => { S.role = r; emit(); }, setAi: v => { S.aiServer = v; log('ai', `Demo: ai-server is now ${v}`); emit(); },
+      clearToast: () => { S.toast = null; emit(); },
+    };
+  }
+
+  root.ModerationEngine = { createEngine, wordMatches };
+  if (typeof module !== 'undefined') module.exports = { createEngine, wordMatches };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(() => {
+  const { html, render, useState, useEffect, useReducer, useRef } = window.htmPreact;
+  const E = window.ModerationEngine.createEngine();
+  const S = E.S;
+  const ls = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch { return d } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} },
+  };
+
+  // ── labels ──
+  const ACTION = {
+    BLOCK: { label: 'Block', badge: 'bad', meaning: 'Not published. The learner is told the rule and why.' },
+    HOLD: { label: 'Hold', badge: 'warn', meaning: 'Held for a person. Only the author sees it, waiting for review.' },
+    REPORT: { label: 'Report', badge: 'info', meaning: 'Stays up and goes to the queue. The learner is told nothing.' },
+    GUIDANCE: { label: 'Guidance', badge: 'ok', meaning: 'Stays up. The learner gets a gentle note to fix it.' },
+  };
+  const MODE = { AUTOPILOT: 'Autopilot', COPILOT: 'Copilot', AI_DISABLED: 'AI disabled' };
+  const REVIEW = { REVIEW_FIRST: 'Review first', PUBLISH_FIRST: 'Publish first' };
+  const ASSUME = {
+    N1: 'What each rule action does is not defined in the stories or HLD (open item N1). This is the prototype\'s assumption.',
+    C4: 'Whether a blocked word always blocks, or takes its rule\'s action, is open (C4). Assumed: it always stops the content.',
+    C6: 'Whether blocked words still stop content under Copilot is open (C6). Assumed: yes.',
+    C15: 'Which rules are sent to the AI is open (C15). Assumed: published rules in force with AI checking on.',
+    C16: 'Guidance "close to breaking a rule" (row 79) versus a Guidance rule action is open (C16).',
+    C19: 'Testing a rule has no AI path in the HLD (C19). The AI half here is simulated.',
+    C20: 'An AI Block verdict arrives after the post exists (C20). Assumed: the author still sees it with the rule; nobody else does.',
+    C22: 'When Rails re-sends Unchecked content (catchup) is open (C22).',
+    C23: 'The default moderation mode is not stated (C23). Copilot is used here.',
+    C24: 'The self-harm support message and helpline wording are not decided (C24).',
+    N3: 'What happens to a repeat post is not stated (N3). Assumed: held for a person, no AI call.',
+    inferred: 'Follows from two stated rules rather than being stated directly.',
+  };
+  const Assume = ({ id, children }) => html`<span class="assume" title=${ASSUME[id] || id}>Assumption${children ? ' · ' + children : ''}</span>`;
+  const rel = t => { const d = S.clock - t; return d <= 0 ? 'just now' : d < 60 ? `${d} min ago` : `${Math.floor(d / 60)} h ${d % 60} min ago` };
+  const wait = t => { const d = S.clock - t; return d < 60 ? `${d} min` : `${Math.floor(d / 60)} h ${d % 60} min` };
+  const initials = n => n.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase();
+  const colorOf = id => ({ asha: '#7c4dff', ravi: '#0f8a8a', meera: '#c56a00' }[id] || '#6b7280');
+  const Avatar = ({ id, size = 28 }) => html`<span class="avatar" style=${`width:${size}px;height:${size}px;background:${colorOf(id)}`}>${initials(E.person(id).name)}</span>`;
+  const placeName = c => { const p = E.place(c.placeId); return p.label + (c.productId ? ' · ' + E.PRODUCTS.find(x => x.id === c.productId).name : '') };
+  const contentOf = id => S.content.find(c => c.id === id);
+  const excerpt = c => (c.title ? c.title + ' — ' : '') + (c.body || '');
+
+  // ── seed a realistic starting state (instant checks, no timers) ──
+  function seed() {
+    E.addExisting({ author: 'meera', placeId: 'community', title: 'Welcome to NEET 2027 Doubts', body: 'Post your doubts here. Be kind to each other — Teachers answer every evening.', at: 1 });
+    E.addExisting({ author: 'ravi', placeId: 'community', title: 'Genetics numericals', body: 'Can someone explain dihybrid cross ratios? I keep getting 9:3:3:1 wrong.', at: 6 });
+    E.addExisting({ author: 'asha', placeId: 'feeds', title: 'Finished chapter 4!', body: 'Plant physiology done. Next up: human physiology.', at: 9 });
+    S.clock = 11;
+    E.submit({ author: 'ravi', placeId: 'community', title: 'Need help fast', body: 'Anyone who has the answers, call me on 9876543210', instant: true });
+    S.clock = 18;
+    S.log.length = 0;
+    S.log.unshift({ id: 0, t: 18, lane: 'sys', text: 'Demo loaded. Three posts already exist, and Ravi\'s phone-number post is waiting in the queue (review first + Copilot). Pick a scenario from the bar, or post as a learner.' });
+  }
+  const fresh = !ls.get('mod-proto-seeded-v1', false);
+  seed();
+
+  // ── scenarios ──
+  const SCEN = [
+    { id: 's1', t: 'Spam under Copilot', d: 'Review first + Copilot: the post waits for a person. Approve or remove it in the queue.', set: { reviewMode: 'REVIEW_FIRST', moderationMode: 'COPILOT' }, ai: 'up', who: 'asha', place: 'community', title: 'Cheap notes', body: 'Get a 50% discount on my full notes pack, DM me' },
+    { id: 's2', t: 'Autopilot blocks a rival academy', d: 'Review first + Autopilot: a Block rule stops it; nobody else ever sees it.', set: { reviewMode: 'REVIEW_FIRST', moderationMode: 'AUTOPILOT' }, ai: 'up', who: 'asha', place: 'community', title: 'Better option', body: 'Honestly the better academy near me has lower fees' },
+    { id: 's3', t: 'Phone number inside an image (Hold)', d: 'Publish first + Autopilot: it goes live, then comes down and waits for a person. The AI reads text in the picture.', set: { reviewMode: 'PUBLISH_FIRST', moderationMode: 'AUTOPILOT' }, ai: 'up', who: 'asha', place: 'community', title: 'Study group', body: 'Study group for chapter 5 — anyone interested?', image: 'img-phone' },
+    { id: 's4', t: 'Blocked word — never created', d: 'A disguised blocked word (1d10t) is stopped on sight in Rails. No AI call.', set: {}, ai: 'up', who: 'asha', place: 'community', title: 'Reply', body: 'you are such an 1d10t' },
+    { id: 's5', t: 'Self-harm — support, not a rule', d: 'The self-harm rule is pinned to Copilot here: a person always looks, and the learner sees support, never the rule name.', set: { moderationMode: 'AUTOPILOT' }, ai: 'up', who: 'asha', place: 'community', title: 'tired', body: 'I feel like there is no reason to live anymore' },
+    { id: 's6', t: 'Off-topic — Guidance', d: 'Autopilot + a Guidance rule: it stays up with a gentle note.', set: { moderationMode: 'AUTOPILOT' }, ai: 'up', who: 'asha', place: 'community', title: 'Break time', body: 'Anyone know the cricket score today?' },
+    { id: 's7', t: 'ai-server down — Unchecked', d: 'The submit fails, so Rails publishes it and files it under Unchecked.', set: { reviewMode: 'REVIEW_FIRST' }, ai: 'down', who: 'asha', place: 'community', title: 'Mock test', body: 'When is the next mock test?' },
+    { id: 's8', t: 'ai-server slow — the 5-minute deadline', d: 'No verdict arrives. Use "+5 min" in the bar: Rails publishes it as Unchecked. Then deliver the late verdict.', set: { reviewMode: 'REVIEW_FIRST', moderationMode: 'AUTOPILOT' }, ai: 'slow', who: 'asha', place: 'community', title: 'Deal', body: 'Buy now — limited offer on crash course notes' },
+    { id: 's9', t: 'Report a post', d: 'Switch to Ravi and report Asha\'s post from its ••• menu. It lands in the Reported tab with no AI call.', set: {}, ai: 'up', who: 'ravi', place: 'feeds', title: '', body: '' },
+    { id: 's10', t: 'Repeat offender → automatic restriction', d: 'Remove three of one learner\'s posts. On the third, Rails restricts them automatically; their next post is held.', set: { moderationMode: 'COPILOT', removalsBeforeRestriction: 3 }, ai: 'up', who: 'ravi', place: 'community', title: 'Offer', body: 'Buy now: offer on test series' },
+  ];
+
+  // ── root ──
+  function App() {
+    const [, tick] = useReducer(x => x + 1, 0);
+    useEffect(() => E.on(tick), []);
+    const [view, setView] = useState(ls.get('mod-proto-view', 'both'));
+    const [page, setPage] = useState(ls.get('mod-proto-page', 'queue'));
+    const [viewer, setViewer] = useState('asha');
+    const [placeId, setPlaceId] = useState('community');
+    const [draft, setDraft] = useState({ title: '', body: '', image: null, forced: 'auto' });
+    const [logOpen, setLogOpen] = useState(ls.get('mod-proto-log', true));
+    const [scenOpen, setScenOpen] = useState(false);
+    const [hint, setHint] = useState(null);
+    useEffect(() => { ls.set('mod-proto-view', view) }, [view]);
+    useEffect(() => { ls.set('mod-proto-page', page) }, [page]);
+    useEffect(() => { ls.set('mod-proto-log', logOpen) }, [logOpen]);
+    useEffect(() => { if (S.toast) { const t = setTimeout(() => E.clearToast(), 2600); return () => clearTimeout(t) } }, [S.toast && S.toast.id]);
+
+    const runScenario = s => {
+      if (Object.keys(s.set).length) E.saveSettings(s.set);
+      E.setAi(s.ai); setViewer(s.who); setPlaceId(s.place);
+      setDraft({ title: s.title, body: s.body, image: s.image || null, forced: 'auto' });
+      setHint(s); setScenOpen(false); if (view === 'admin') setView('both');
+    };
+    const pendingChecks = S.checks.filter(k => k.state === 'PENDING' || k.state === 'UNCHECKED');
+    return html`
+      <header class="demobar">
+        <h1>Moderation prototype <small>demo controls — not product UI</small></h1>
+        <div class="dgroup"><span class="lbl">Show</span>
+          <span class="dseg">${[['both', 'Both'], ['learner', 'Learner app'], ['admin', 'Admin app']].map(([k, l]) => html`<button aria-pressed=${view === k} onClick=${() => setView(k)}>${l}</button>`)}</span></div>
+        <div class="dgroup scen">
+          <button class="dbtn hot" aria-expanded=${scenOpen} onClick=${() => setScenOpen(!scenOpen)}>Scenarios ▾</button>
+          ${scenOpen && html`<div class="scen-menu" role="menu">${SCEN.map(s => html`<button role="menuitem" onClick=${() => runScenario(s)}><b>${s.t}</b><small>${s.d}</small></button>`)}</div>`}
+        </div>
+        <div class="dgroup"><span class="lbl">Admin role</span>
+          <span class="dseg">${['Teacher', 'Teaching Assistant'].map(r => html`<button aria-pressed=${S.role === r} onClick=${() => E.setRole(r)}>${r}</button>`)}</span></div>
+        <div class="dgroup"><span class="lbl">ai-server</span>
+          <span class="dseg">${[['up', 'Up'], ['slow', 'Slow'], ['down', 'Down']].map(([k, l]) => html`<button aria-pressed=${S.aiServer === k} onClick=${() => E.setAi(k)}>${l}</button>`)}</span></div>
+        <div class="dgroup"><span class="clock">t = ${S.clock} min</span>
+          <button class="dbtn" onClick=${() => E.advance(5)} title="Move the simulated clock 5 minutes forward — deadlines fire (HLD §9)">+5 min</button>
+          <button class="dbtn" disabled=${!pendingChecks.length} onClick=${() => E.deliverLate()} title="Deliver verdicts that have not arrived yet">Deliver late verdict${pendingChecks.length ? ` (${pendingChecks.length})` : ''}</button></div>
+        <span class="spacer"></span>
+        <div class="dgroup">
+          <button class="dbtn" aria-pressed=${logOpen} onClick=${() => setLogOpen(!logOpen)}>${logOpen ? 'Hide' : 'Show'} behind the scenes</button>
+          <button class="dbtn" onClick=${() => location.reload()}>Reset</button></div>
+      </header>
+      <main class=${'stage' + (view === 'both' ? '' : ' one') + (logOpen ? ' withlog' : '')} style=${logOpen ? 'padding-bottom:calc(30vh + 12px)' : ''}>
+        ${view !== 'admin' && html`<section class="frame" aria-label="Learner app"><div class="frame-label"><span>Learner app · bodhi Socials</span><span>Viewing as ${E.person(viewer).name}</span></div>
+          <div class="frame-body"><${Learner} viewer=${viewer} setViewer=${setViewer} placeId=${placeId} setPlaceId=${setPlaceId} draft=${draft} setDraft=${setDraft} hint=${hint} setHint=${setHint} /></div></section>`}
+        ${view !== 'learner' && html`<section class="frame" aria-label="Admin app"><div class="frame-label"><span>Admin app · Engage → Moderation</span><span>Signed in as ${S.role}</span></div>
+          <div class="frame-body"><${Admin} page=${page} setPage=${setPage} /></div></section>`}
+      </main>
+      ${logOpen && html`<${Log} />`}
+      ${S.toast && html`<div class="toast" role="status">${S.toast.text}</div>`}`;
+  }
+
+  // ═════════════════════════════ LEARNER APP ═════════════════════════════
+  function Learner({ viewer, setViewer, placeId, setPlaceId, draft, setDraft, hint, setHint }) {
+    const [composing, setComposing] = useState(false);
+    const [err, setErr] = useState(null);
+    const [reportFor, setReportFor] = useState(null);
+    const [showRules, setShowRules] = useState(false);
+    const pl = E.place(placeId);
+    const me = S.members[viewer];
+    const on = S.settings.enabled && S.settings.places[placeId];
+    useEffect(() => { if (draft.body || draft.title) setComposing(true) }, [draft]);
+    useEffect(() => { setErr(null) }, [viewer, placeId]);
+    const visible = S.content.filter(c => c.placeId === placeId && !c.parentId && (c.state === 'LIVE' || c.author === viewer));
+    const eff = E.effective(pl.productId);
+    const rulesInForce = eff.rules;
+    const ban = me && me.bans.find(b => b.scope === 'ACADEMY' || (b.scope === 'PRODUCT' && b.productId === pl.productId));
+
+    const post = () => {
+      const r = E.submit({ author: viewer, placeId, title: draft.title.trim(), body: draft.body.trim(), image: draft.image, forced: draft.forced });
+      if (!r.ok) { setErr(r); return }
+      setErr(null); setDraft({ title: '', body: '', image: null, forced: 'auto' }); setComposing(false); setHint(null);
+    };
+    return html`<div class="learner">
+      <div class="l-nav"><span class="brand"><span class="logo">N</span>NEET Mastery Academy</span>
+        <span class="l-pills"><span class="on">Home</span><span>Courses</span><span>Events</span><span>Members</span></span>
+        <label class="demo-box" style="padding:4px 8px">View as
+          <select value=${viewer} onChange=${e => setViewer(e.target.value)} aria-label="View as">
+            <option value="asha">Asha K (learner)</option><option value="ravi">Ravi M (learner)</option></select></label></div>
+      <div class="l-body">
+        <nav class="l-side" aria-label="Spaces"><span class="sec">Spaces</span>
+          ${E.PLACES.filter(p => p.id !== 'newsfeed').map(p => html`<button class=${'l-space' + (p.id === placeId ? ' on' : '')} onClick=${() => setPlaceId(p.id)}>
+            <i style=${`background:${{ community: '#3b82f6', feeds: '#f59e0b', product_discussions: '#10b981' }[p.id]}`}></i>${p.space}</button>`)}
+          <span class="sec">About</span>
+          <button class="l-space" onClick=${() => setShowRules(true)}>Community rules</button></nav>
+        <div class="l-main">
+          <div class="l-head"><h2><i style=${`background:${{ community: '#3b82f6', feeds: '#f59e0b', product_discussions: '#10b981' }[placeId]}`}></i>${pl.space}</h2>
+            <span class="onlyyou">${on ? `Moderation on · ${REVIEW[eff.reviewMode]} · ${MODE[eff.moderationMode]}${eff.exception ? ' (product exception)' : ''}` : 'Moderation off here'}</span></div>
+          ${hint && html`<div class="demo-box"><b>Scenario:</b> ${hint.t}. ${hint.d} <button class="l-btn ghost" style="padding:2px 8px;font-size:12px" onClick=${() => setHint(null)}>Hide</button></div>`}
+          ${me && me.restricted && html`<div class="note wait"><b>Your posts are reviewed before they appear</b><span class="x">${me.restricted.source === 'AUTOMATIC' ? `After ${me.removals} of your posts were removed, a Teacher has to approve what you post next.` : 'A Teacher restricted your account, so a Teacher approves what you post.'} You can still read everything and use your courses. <span class="story">row 77</span></span><span class="onlyyou">Exact wording is not in the stories or HLD</span></div>`}
+          ${ban ? html`<div class="note bad"><b>You can't post here right now</b><span class="x">You are banned from posting ${ban.scope === 'ACADEMY' ? 'anywhere in this academy' : 'in this product'}. Your course access is not affected. <span class="story">rows 48–49 · SR 14</span></span></div>`
+            : !composing ? html`<button class="start" onClick=${() => setComposing(true)}><${Avatar} id=${viewer} />Start a post…</button>`
+            : html`<div class="lcard">
+              <input class="l-inp" id="c-title" placeholder="Title" value=${draft.title} onInput=${e => setDraft({ ...draft, title: e.target.value })} />
+              <textarea class="l-inp" id="c-body" placeholder="Write something…" value=${draft.body} onInput=${e => setDraft({ ...draft, body: e.target.value })}></textarea>
+              <div class="imgs"><span class="onlyyou">Attach an image:</span>${E.SAMPLE_IMAGES.map(im => html`<button class="imgpick" aria-pressed=${draft.image === im.id} onClick=${() => setDraft({ ...draft, image: draft.image === im.id ? null : im.id })}>🖼 ${im.label}</button>`)}</div>
+              <div class="demo-box">Demo control — simulated AI verdict:
+                <select value=${draft.forced} onChange=${e => setDraft({ ...draft, forced: e.target.value })} aria-label="Simulated AI verdict">
+                  <option value="auto">Let the simulated AI decide</option><option value="clean">Force: clean</option>
+                  ${rulesInForce.filter(r => r.aiCheck).map(r => html`<option value=${r.id}>Force: breaks Rule ${r.number} · ${r.name} (${ACTION[r.action].label})</option>`)}</select></div>
+              ${err && err.error === 'BLOCKED' && html`<${BlockedNote} rule=${err.rule} selfHarm=${err.selfHarm} />`}
+              ${err && err.error === 'BANNED' && html`<div class="note bad"><b>You can't post here right now</b></div>`}
+              <div style="display:flex;gap:8px;justify-content:flex-end"><button class="l-btn ghost" onClick=${() => { setComposing(false); setErr(null) }}>Cancel</button>
+                <button class="l-btn" disabled=${!draft.body.trim() && !draft.image} onClick=${post}>Post</button></div></div>`}
+          ${visible.length ? visible.map(c => html`<${Post} key=${c.id} c=${c} viewer=${viewer} onReport=${x => setReportFor(x)} />`) : html`<div class="lcard" style="text-align:center;color:var(--l-hint)">No posts in this space yet.</div>`}
+        </div></div>
+      ${reportFor && html`<${ReportModal} c=${reportFor} viewer=${viewer} rules=${rulesInForce} onClose=${() => setReportFor(null)} />`}
+      ${showRules && html`<div class="lmodal-wrap" onClick=${e => e.target === e.currentTarget && setShowRules(false)}><div class="lmodal" role="dialog" aria-label="Community rules"><h3>Community rules</h3>
+        <p class="onlyyou" style="margin:0">The academy's published rules, in its own words <span class="story">row 70</span></p>
+        <div class="rules-list">${rulesInForce.map(r => html`<div><b>Rule ${r.number}: ${r.name}</b><span>${r.description}</span></div>`)}</div>
+        <div style="text-align:right"><button class="l-btn" onClick=${() => setShowRules(false)}>Close</button></div></div></div>`}
+    </div>`;
+  }
+
+  function BlockedNote({ rule, selfHarm, afterPublishing }) {
+    if (selfHarm) return html`<div class="note care"><b>You're not alone</b><span class="x">It sounds like you're going through something hard. Please talk to someone you trust, or call a helpline.</span>
+      <span class="x"><b>Helpline:</b> [number to be decided]</span><span class="onlyyou">Fixed support message — never names the rule (SR 9, row 78). Wording and helpline are open (C24).</span></div>`;
+    return html`<div class="note bad"><b>${afterPublishing ? 'Taken down' : "Can't be published"} — Rule ${rule.number}: ${rule.name}</b><span class="x">${rule.description}</span><span class="x">Edit your post and try again.</span>
+      <span class="onlyyou">The academy's own rule wording (HLD §12) · a blocked word and the AI name the same rule (SR 7)</span></div>`;
+  }
+
+  function Notice({ c }) {
+    const n = c.notice;
+    const r = n && n.rule;
+    const checking = c.checked === 'PENDING' && S.checks.some(k => k.contentId === c.id && k.state === 'PENDING');
+    if (c.state === 'HELD') {
+      if (n && n.kind === 'SELF_HARM') return html`<${BlockedNote} selfHarm=${true} />`;
+      const why = n && n.reason === 'RESTRICTED' ? 'Your account is restricted, so a Teacher approves what you post.' : n && n.reason === 'REPEAT' ? 'This looks like a repeated post, so a person will check it.' : r ? `A person is checking it against Rule ${r.number}: ${r.name}.` : checking ? 'We are checking your post. It usually takes a second.' : 'A person will look at it soon.';
+      return html`<div class=${'note wait' + (checking ? ' checking' : '')}><b>Waiting for review</b><span class="x">${why} Only you can see it until then. You can still edit it.</span><span class="onlyyou">rows 72–74</span></div>`;
+    }
+    if (c.state === 'BLOCKED') return n && n.kind === 'SELF_HARM' ? html`<${BlockedNote} selfHarm=${true} />` : html`<div><${BlockedNote} rule=${r} afterPublishing=${n.afterPublishing} /><div style="margin-top:6px"><${Assume} id="C20">what happens to a written post the AI blocks</${Assume}></div></div>`;
+    if (c.state === 'REMOVED') return html`<div class="note bad"><b>Removed${n && n.afterPublishing ? ' after it was published' : ''}</b><span class="x">${r ? `A Teacher removed this post under Rule ${r.number}: ${r.name}. ${r.description}` : 'A Teacher removed this post.'}</span><span class="onlyyou">rows 75–76 · others can no longer see it</span></div>`;
+    if (!n) return null;
+    if (n.kind === 'GUIDANCE') return html`<div class="note info"><b>A friendly note — Rule ${r.number}: ${r.name}</b><span class="x">${r.description} Your post is up; you might want to edit it.</span><span class="onlyyou">row 79 · <${Assume} id="N1">Guidance</${Assume}></span></div>`;
+    if (n.kind === 'APPROVED') return html`<div class="note ok"><b>Approved — your post is live</b><span class="x">A Teacher reviewed it and everyone can see it now.</span><span class="onlyyou">row 75 · no notification is sent; you see it here</span></div>`;
+    if (n.kind === 'RESTORED') return html`<div class="note ok"><b>Your post is back</b><span class="x">A Teacher restored it.</span></div>`;
+    if (n.kind === 'LIVE_AFTER_CHECK') return html`<div class="note ok"><b>Posted</b><span class="x">It passed the check and is live.</span><span class="onlyyou">Whether the learner is told is open (§19 item 2)</span></div>`;
+    return null;
+  }
+
+  function Post({ c, viewer, onReport }) {
+    const [menu, setMenu] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [ed, setEd] = useState({ title: c.title, body: c.body });
+    const [reply, setReply] = useState('');
+    const [replyErr, setReplyErr] = useState(null);
+    const mine = c.author === viewer;
+    const img = c.image && E.SAMPLE_IMAGES.find(i => i.id === c.image);
+    const comments = S.content.filter(x => x.parentId === c.id && (x.state === 'LIVE' || x.author === viewer)).reverse();
+    const canEdit = mine && (c.state === 'HELD' || c.state === 'LIVE');
+    const author = E.person(c.author);
+    const sendReply = () => {
+      const r = E.submit({ author: viewer, placeId: c.placeId, title: '', body: reply.trim(), parentId: c.id, forced: 'auto' });
+      if (!r.ok) { setReplyErr(r); return } setReply(''); setReplyErr(null);
+    };
+    return html`<article class=${'post' + (c.state !== 'LIVE' ? ' faded' : '')}>
+      ${mine && c.state !== 'LIVE' && html`<span class="onlyyou">🔒 Only you can see this</span>`}
+      ${c.title && html`<h3>${c.title}</h3>`}
+      <div class="authorrow"><${Avatar} id=${c.author} size=${32} /><div><div class="n">${author.name}${author.role === 'Teacher' && html`<span class="role">Teacher</span>`}</div><div class="s">${rel(c.createdAt)} · Member since ${author.joined}${c.version > 1 ? ' · edited' : ''}</div></div></div>
+      ${editing ? html`<div style="display:grid;gap:8px"><input class="l-inp" value=${ed.title} onInput=${e => setEd({ ...ed, title: e.target.value })} /><textarea class="l-inp" value=${ed.body} onInput=${e => setEd({ ...ed, body: e.target.value })}></textarea>
+          <div style="display:flex;gap:8px;justify-content:flex-end"><button class="l-btn ghost" onClick=${() => setEditing(false)}>Cancel</button><button class="l-btn" onClick=${() => { const r = E.submit({ author: viewer, placeId: c.placeId, title: ed.title, body: ed.body, image: c.image, editOf: c.id }); setEditing(false) }}>Save — check again</button></div></div>`
+        : html`<p class="body">${c.body}</p>`}
+      ${img && html`<div class="pimg" style=${`background:${img.tone}`}><b>🖼 ${img.label}</b><small>Text in the picture: “${img.text}”</small></div>`}
+      ${mine && html`<${Notice} c=${c} />`}
+      <div class="pacts"><button>♡ ${c.likes}</button><span>💬 ${comments.length}</span>
+        <span class="more"><button aria-expanded=${menu} onClick=${() => setMenu(!menu)} aria-label="More">•••</button>
+          ${menu && html`<div class="menu" onMouseLeave=${() => setMenu(false)}>
+            ${canEdit && html`<button onClick=${() => { setEditing(true); setMenu(false) }}>Edit</button>`}
+            ${!mine && c.state === 'LIVE' && html`<button onClick=${() => { onReport(c); setMenu(false) }}>Report</button>`}
+            <button onClick=${() => setMenu(false)}>Copy link</button></div>`}</span></div>
+      ${c.state === 'LIVE' && html`<div class="comments">
+        ${comments.map(x => html`<div class="cmt"><${Avatar} id=${x.author} /><div class="bubble"><b>${E.person(x.author).name}${x.author === viewer && x.state !== 'LIVE' ? ' · only you can see this' : ''}</b><span>${x.body}</span>${x.author === viewer && html`<${Notice} c=${x} />`}
+          ${x.author !== viewer && x.state === 'LIVE' && html`<button class="l-btn ghost" style="justify-self:start;padding:1px 8px;font-size:12px" onClick=${() => onReport(x)}>Report</button>`}</div></div>`)}
+        <div class="reply"><${Avatar} id=${viewer} /><input class="l-inp" placeholder="Write a comment…" value=${reply} onInput=${e => setReply(e.target.value)} onKeyDown=${e => e.key === 'Enter' && reply.trim() && sendReply()} /><button class="l-btn" disabled=${!reply.trim()} onClick=${sendReply}>Reply</button></div>
+        ${replyErr && replyErr.error === 'BLOCKED' && html`<${BlockedNote} rule=${replyErr.rule} selfHarm=${replyErr.selfHarm} />`}
+      </div>`}
+    </article>`;
+  }
+
+  function ReportModal({ c, viewer, rules, onClose }) {
+    const [ruleId, setRuleId] = useState('');
+    const [note, setNote] = useState('');
+    return html`<div class="lmodal-wrap" onClick=${e => e.target === e.currentTarget && onClose()}><div class="lmodal" role="dialog" aria-label="Report content">
+      <h3>Report content</h3><p class="onlyyou" style="margin:0">The Report button now creates a moderation report, not a help-desk ticket (HLD §7)</p>
+      <div class="field"><label for="rep-rule" style="font-weight:600">Rule broken*</label><select id="rep-rule" class="l-inp" value=${ruleId} onChange=${e => setRuleId(e.target.value)}>
+        <option value="">Choose a rule</option>${rules.map(r => html`<option value=${r.id}>${r.reportReason || r.name}</option>`)}</select></div>
+      <div class="field"><label for="rep-note" style="font-weight:600">Note</label><textarea id="rep-note" class="l-inp" value=${note} onInput=${e => setNote(e.target.value)} placeholder="Optional"></textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="l-btn ghost" onClick=${onClose}>Cancel</button>
+        <button class="l-btn" disabled=${!ruleId} onClick=${() => { E.report(viewer, c.id, ruleId, note.trim()); onClose() }}>Report</button></div>
+      <span class="onlyyou">row 80 · reason wording set by the Teacher (row 34)</span></div></div>`;
+  }
+
+  // ═════════════════════════════ ADMIN APP ═════════════════════════════
+  function Admin({ page, setPage }) {
+    const pending = S.queue.filter(q => q.status === 'PENDING').length;
+    const nav = [['queue', 'Review queue', pending], ['rules', 'Rules & blocked words'], ['settings', 'Settings'], ['limits', 'Restrictions & bans'], ['reports', 'Reports']];
+    const title = { queue: 'Review queue', rules: 'Rules & blocked words', settings: 'Settings', limits: 'Restrictions & bans', reports: 'Reports' }[page];
+    return html`<div class="admin">
+      <nav class="a-side" aria-label="Admin navigation">
+        <div class="a-brand"><span class="logo">L</span><div>NEET Mastery Academy<small>Learnyst admin</small></div></div>
+        ${['Dashboard', 'Products', 'Learners'].map(x => html`<button class="a-nav dim" tabindex="-1">${x}</button>`)}
+        <span class="a-grp">Engage</span>
+        <button class="a-nav dim" tabindex="-1">Community</button>
+        <button class="a-nav" onClick=${() => setPage('queue')}><span>Moderation</span><span>▾</span></button>
+        ${nav.map(([k, l, n]) => html`<button class=${'a-nav sub' + (page === k ? ' on' : '')} aria-current=${page === k ? 'page' : null} onClick=${() => setPage(k)}><span>${l}</span>${n ? html`<span class="a-count">${n}</span>` : ''}</button>`)}
+        <span class="a-grp">Settings</span>
+        ${['School settings', 'Admin roles'].map(x => html`<button class="a-nav dim" tabindex="-1">${x}</button>`)}
+      </nav>
+      <div class="a-main">
+        <div class="a-top"><span class="crumbs">Engage / Moderation / <b>${title}</b></span><span class="who"><span class="avatar" style=${`background:${S.role === 'Teacher' ? '#c56a00' : '#2f6fe0'}`}>${S.role === 'Teacher' ? 'MS' : 'KP'}</span>${S.role === 'Teacher' ? 'Meera S · Teacher' : 'Karan P · Teaching Assistant'}</span></div>
+        ${page === 'queue' && html`<${Queue} />`}
+        ${page === 'rules' && html`<${Rules} />`}
+        ${page === 'settings' && html`<${Settings} key=${S.settingsVersion} />`}
+        ${page === 'limits' && html`<${Limits} />`}
+        ${page === 'reports' && html`<${Reports} />`}
+      </div></div>`;
+  }
+
+  const TABS = [['NEEDS_REVIEW', 'Needs review'], ['REPORTED', 'Reported'], ['UNCHECKED', 'Unchecked'], ['DONE', 'Done']];
+  const statusBadge = q => q.status === 'PENDING' ? html`<span class="badge warn">Waiting</span>` : q.status === 'APPROVED' ? html`<span class="badge ok">${q.restored ? 'Restored' : 'Approved'}</span>` : q.status === 'REMOVED' ? html`<span class="badge bad">Removed</span>` : html`<span class="badge">Re-checked</span>`;
+  const liveBadge = c => c.state === 'LIVE' ? html`<span class="badge ok">Live</span>` : c.state === 'HELD' ? html`<span class="badge warn">Held</span>` : c.state === 'REMOVED' ? html`<span class="badge bad">Removed</span>` : html`<span class="badge bad">Blocked</span>`;
+
+  function Queue() {
+    const [tab, setTab] = useState('NEEDS_REVIEW');
+    const [fArea, setFArea] = useState('');
+    const [fRule, setFRule] = useState('');
+    const [open, setOpen] = useState(null);
+    const inTab = q => tab === 'DONE' ? (q.status === 'APPROVED' || q.status === 'REMOVED') : q.status === 'PENDING' && q.tab === tab;
+    const rows = S.queue.filter(inTab).filter(q => { const c = contentOf(q.contentId); return c && (!fArea || c.placeId === fArea) && (!fRule || q.ruleId === fRule) })
+      .sort((a, b) => tab === 'DONE' ? b.decidedAt - a.decidedAt : a.since - b.since);
+    const pending = S.queue.filter(q => q.status === 'PENDING');
+    const oldest = pending.length ? Math.max(...pending.map(q => S.clock - q.since)) : null;
+    const count = t => S.queue.filter(q => t === 'DONE' ? (q.status === 'APPROVED' || q.status === 'REMOVED') : q.status === 'PENDING' && q.tab === t).length;
+    return html`<div class="a-page">
+      <div class="a-head"><div><h2>Review queue</h2><p>Everything the AI flagged, learners reported, or Rails held — in one place. Approve or remove right from the row. <span class="story">rows 36–45</span></p></div></div>
+      <div class="kpis">
+        <div class="kpi"><span class="v">${pending.length}</span><span class="k">Waiting for review <span class="story">row 43</span></span></div>
+        <div class=${'kpi' + (oldest > 0 ? ' alert' : '')}><span class="v">${oldest == null ? '—' : wait(S.clock - oldest)}</span><span class="k">Oldest waiting · 36-hour takedown clock <span class="story">row 44</span></span></div>
+        <div class="kpi"><span class="v">${count('UNCHECKED')}</span><span class="k">Published without a check <span class="story">row 45</span></span></div>
+      </div>
+      <div class="card">
+        <div class="tabs" role="tablist" style="padding:0 12px">${TABS.map(([k, l]) => html`<button role="tab" aria-selected=${tab === k} onClick=${() => setTab(k)}>${l}<span class="n">${count(k)}</span></button>`)}</div>
+        <div class="card-b" style="gap:10px"><div class="filters">
+          <select value=${fArea} onChange=${e => setFArea(e.target.value)} aria-label="Where it is"><option value="">All places</option>${E.PLACES.map(p => html`<option value=${p.id}>${p.label}</option>`)}</select>
+          <select value=${fRule} onChange=${e => setFRule(e.target.value)} aria-label="Rule"><option value="">All rules</option>${S.rules.map(r => html`<option value=${r.id}>Rule ${r.number} · ${r.name}</option>`)}</select>
+          ${tab === 'UNCHECKED' && html`<span class="story">Published because no verdict came in time (HLD §9)</span>`}</div></div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Content</th><th>Rule broken</th><th>Why it was stopped</th><th>Learner</th><th>Where it is</th><th>Status</th><th>${tab === 'DONE' ? 'Decided' : 'Waiting'}</th><th></th></tr></thead>
+          <tbody>${rows.length ? rows.map(q => { const c = contentOf(q.contentId); const r = E.rule(q.ruleId); return html`<tr class="click" onClick=${() => setOpen(q.id)}>
+            <td><div class="cell-content"><b>${c.parentId ? 'Comment' : c.title || 'Post'}</b><span>${c.body}</span></div></td>
+            <td>${r ? html`<span>Rule ${r.number} · ${r.name}</span>` : html`<span class="story">—</span>`}</td>
+            <td><div class="cell-content"><span>${q.why}</span>${q.reportCount > 1 && html`<span class="badge info">${q.reportCount} reports</span>`}</div></td>
+            <td><span style="display:flex;gap:6px;align-items:center"><${Avatar} id=${c.author} size=${22} />${E.person(c.author).name}</span></td>
+            <td>${placeName(c)}</td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap">${statusBadge(q)}${liveBadge(c)}</td>
+            <td class="mono">${tab === 'DONE' ? rel(q.decidedAt) : wait(q.since)}</td>
+            <td onClick=${e => e.stopPropagation()}>${q.status === 'PENDING' ? html`<div class="rowacts"><button class="btn sm primary" onClick=${() => E.approve(q.id)}>Approve</button><button class="btn sm danger" onClick=${() => E.remove(q.id)}>Remove</button></div>` : html`<button class="btn sm outline" onClick=${() => setOpen(q.id)}>Open</button>`}</td>
+          </tr>` }) : html`<tr><td colspan="8"><div class="empty"><b>Nothing here</b><span>${tab === 'NEEDS_REVIEW' ? 'Post as a learner, or pick a scenario from the bar, to fill the queue.' : 'Items appear here as they happen.'}</span></div></td></tr>`}</tbody></table></div>
+      </div>
+      ${open && html`<${ItemSheet} qid=${open} onClose=${() => setOpen(null)} />`}
+    </div>`;
+  }
+
+  function ItemSheet({ qid, onClose }) {
+    const [dlg, setDlg] = useState(null);
+    const q = S.queue.find(x => x.id === qid); const c = contentOf(q.contentId); const r = E.rule(q.ruleId);
+    const m = S.members[c.author]; const p = E.person(c.author);
+    const parent = c.parentId && contentOf(c.parentId);
+    const around = S.content.filter(x => x.id !== c.id && (c.parentId ? x.parentId === c.parentId || x.id === c.parentId : x.parentId === c.id)).slice(0, 4);
+    const history = S.queue.filter(x => S.content.find(y => y.id === x.contentId && y.author === c.author) && x.decidedAt != null);
+    const reports = S.reports.filter(x => x.contentId === c.id);
+    const teacher = S.role === 'Teacher';
+    const img = c.image && E.SAMPLE_IMAGES.find(i => i.id === c.image);
+    const doRemove = () => { const res = E.remove(q.id); if (res.restrictedNow || res.removals >= 2) setDlg({ kind: 'banPrompt', removals: res.removals }) };
+    return html`<div class="overlay" onClick=${e => e.target === e.currentTarget && onClose()}><aside class="sheet" role="dialog" aria-label="Queue item">
+      <div class="sheet-h"><div><h3>${c.parentId ? 'Comment' : c.title || 'Post'} ${statusBadge(q)} ${liveBadge(c)}</h3><p>${q.why} · ${placeName(c)} · waiting ${wait(q.since)}</p></div><button class="btn ghost" onClick=${onClose} aria-label="Close">✕</button></div>
+      <div class="sheet-b">
+        <div class="panes">
+          <section class="pane"><h4>The content, in its thread <span class="story">row 37</span></h4>
+            ${parent && html`<div class="quote" style="opacity:.75"><b>${E.person(parent.author).name}:</b> ${excerpt(parent)}</div>`}
+            <div class="quote"><b>${p.name}:</b> ${excerpt(c)}</div>
+            ${img && html`<div class="pimg" style=${`background:${img.tone}`}><b>🖼 ${img.label}</b><small>Text in the picture: “${img.text}”</small></div>`}
+            ${around.map(x => html`<div class="quote" style="opacity:.7;font-size:13px"><b>${E.person(x.author).name}:</b> ${x.body}</div>`)}
+            ${c.aiReason && html`<div class="ai-reason"><b>AI reason</b> — ${c.aiReason} <span class="badge info">${c.aiConfidence} confidence</span><div class="story" style="margin:4px 0 0">Shown to admins only, never to the learner (HLD §12)</div></div>`}
+            ${reports.length > 0 && html`<div class="hist"><b>Reports</b>${reports.map(x => html`<div><span>${E.rule(x.ruleId) ? E.rule(x.ruleId).reportReason : ''}${x.note ? ' — “' + x.note + '”' : ''}</span><span class="mono">${rel(x.at)}</span></div>`)}</div>`}
+            <div class="hist"><b>Edit history <span class="story">row 39</span></b>
+              ${c.versions.length ? c.versions.map(v => html`<div><span>v${v.version}: ${v.body}</span><span class="mono">${rel(v.at)}</span></div>`) : html`<span class="story">No earlier versions</span>`}
+              ${c.versions.length > 0 && html`<div><span><b>v${c.version} (current):</b> ${c.body}</span></div>`}</div>
+          </section>
+          <section class="pane"><h4>Who wrote it <span class="story">row 38</span></h4>
+            <div style="display:flex;gap:10px;align-items:center"><${Avatar} id=${c.author} size=${36} /><div><b>${p.name}</b><div class="story" style="margin:0">Learner</div></div></div>
+            <dl class="kv"><dt>Joined</dt><dd>${p.joined}</dd><dt>Courses</dt><dd>${p.courses.join(', ') || '—'}</dd><dt>Posts written</dt><dd>${p.postsWritten}</dd>
+              <dt>Removals</dt><dd>${m.removals} confirmed · restriction at ${S.settings.removalsBeforeRestriction}</dd>
+              <dt>Status</dt><dd>${m.restricted ? html`<span class="badge warn">Restricted</span>` : ''}${m.bans.map(b => html`<span class="badge bad">Banned · ${b.scope === 'ACADEMY' ? 'academy' : E.PRODUCTS.find(x => x.id === b.productId).name}</span>`)}${!m.restricted && !m.bans.length ? 'No limits' : ''}</dd></dl>
+            <div class="hist"><b>Past actions</b>${history.length ? history.slice(0, 5).map(x => html`<div><span>${x.status === 'REMOVED' ? 'Removed' : 'Approved'}${E.rule(x.ruleId) ? ' · Rule ' + E.rule(x.ruleId).number : ''}</span><span class="mono">${rel(x.decidedAt)}</span></div>`) : html`<span class="story">None yet</span>`}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${m.restricted ? html`<button class="btn sm outline" disabled=${!teacher} title=${teacher ? '' : 'Teacher only (row 58)'} onClick=${() => E.liftRestriction(c.author)}>Lift restriction</button>`
+                : html`<button class="btn sm outline" onClick=${() => E.restrict(c.author)}>Restrict</button>`}
+              <button class="btn sm danger" disabled=${!teacher} title=${teacher ? '' : 'Only a Teacher can ban'} onClick=${() => setDlg({ kind: 'ban' })}>Ban…</button>
+              ${m.bans.length > 0 && html`<button class="btn sm outline" disabled=${!teacher} onClick=${() => m.bans.forEach(b => E.removeBannedContent(c.author, b.id))}>Remove their content in the ban's scope</button>`}
+            </div>
+            <span class="story" style="margin:0">Restrict: every post held for review, academy-wide (SR 13, 16). Ban: one product or the academy; course access stays (SR 14). ${!teacher ? 'Teaching Assistants cannot ban.' : ''}</span>
+          </section>
+        </div>
+      </div>
+      <div class="sheet-f">
+        ${q.status === 'PENDING' && q.tab === 'UNCHECKED' && html`<button class="btn outline" onClick=${() => E.catchup(q.id)}>Check it now (catchup)</button>`}
+        ${(q.status === 'APPROVED' || q.status === 'REMOVED') && html`<button class="btn outline" disabled=${!teacher} title=${teacher ? '' : 'Teacher only (row 46)'} onClick=${() => E.markExample(q.id)}>${q.example ? 'Unmark example' : 'Mark as example'}</button>`}
+        ${q.status === 'REMOVED' && html`<button class="btn outline" onClick=${() => E.restore(q.id)}>Restore</button>`}
+        ${q.status === 'APPROVED' && c.state === 'LIVE' && html`<button class="btn danger" onClick=${doRemove}>Remove</button>`}
+        ${q.status === 'PENDING' && html`<button class="btn danger" onClick=${doRemove}>Remove</button><button class="btn primary" onClick=${() => E.approve(q.id)}>Approve</button>`}
+      </div>
+      ${dlg && dlg.kind === 'ban' && html`<${BanDialog} userId=${c.author} productId=${c.productId} onClose=${() => setDlg(null)} />`}
+      ${dlg && dlg.kind === 'banPrompt' && html`<div class="dialog-wrap"><div class="dialog" role="dialog"><h3>${dlg.removals} posts removed — ban this member?</h3>
+        <p>${m.restricted ? `${p.name} is now restricted, so everything they post is held.` : ''} Banning is always a person's decision and never cancels their course.</p>
+        <div class="f"><button class="btn outline" onClick=${() => setDlg(null)}>Not now</button><button class="btn danger" disabled=${!teacher} onClick=${() => setDlg({ kind: 'ban' })}>Ban…</button></div></div></div>`}
+    </aside></div>`;
+  }
+
+  function BanDialog({ userId, productId, onClose }) {
+    const [scope, setScope] = useState(productId ? 'PRODUCT' : 'ACADEMY');
+    const [prod, setProd] = useState(productId || E.PRODUCTS[0].id);
+    const p = E.person(userId);
+    return html`<div class="dialog-wrap"><div class="dialog" role="dialog" aria-label="Ban learner"><h3>Ban ${p.name}</h3>
+      <p>They keep access to the courses they paid for; they just cannot post there. <span class="story">SR 14</span></p>
+      <div class="radios" style="grid-template-columns:1fr">
+        <button class="rcard" role="radio" aria-checked=${scope === 'PRODUCT'} onClick=${() => setScope('PRODUCT')}><b><span class="dot"></span>From one product</b><span>They lose posting where they caused trouble and keep the rest of the academy (row 48).</span></button>
+        ${scope === 'PRODUCT' && html`<select class="inp" value=${prod} onChange=${e => setProd(e.target.value)} aria-label="Product">${E.PRODUCTS.map(x => html`<option value=${x.id}>${x.type} · ${x.name}</option>`)}</select>`}
+        <button class="rcard" role="radio" aria-checked=${scope === 'ACADEMY'} onClick=${() => setScope('ACADEMY')}><b><span class="dot"></span>From the whole academy</b><span>They cannot post in any product. Replaces any product ban (row 49, SR 19).</span></button></div>
+      <div class="f"><button class="btn outline" onClick=${onClose}>Cancel</button><button class="btn danger" onClick=${() => { E.ban(userId, scope, scope === 'PRODUCT' ? prod : null); onClose() }}>Ban</button></div></div></div>`;
+  }
+
+  // ── rules ──
+  function Rules() {
+    const [open, setOpen] = useState(null);
+    const teacher = S.role === 'Teacher';
+    const checkedBy = r => { const w = S.words.some(x => x.ruleId === r.id); return w && r.aiCheck ? 'Words + AI' : w ? 'Words' : r.aiCheck ? 'AI' : 'Not checked' };
+    return html`<div class="a-page">
+      <div class="a-head"><div><h2>Rules & blocked words</h2><p>Your academy's rules, in your own words. The AI judges against the description; blocked words stop content on sight with no AI check. <span class="story">rows 17–34</span></p></div>
+        <button class="btn primary" disabled=${!teacher} title=${teacher ? '' : 'Teacher only'} onClick=${() => setOpen('new')}>+ New rule</button></div>
+      <div class="card"><div class="tablewrap"><table class="t"><thead><tr><th>Rule</th><th>Checked by</th><th>What happens when it is broken</th><th>Status</th><th>Source</th></tr></thead>
+        <tbody>${S.rules.map(r => html`<tr class="click" onClick=${() => setOpen(r.id)}>
+          <td><div class="cell-content"><b>Rule ${r.number} · ${r.name}</b><span>${r.description}</span></div></td>
+          <td>${checkedBy(r)}${r.pinned ? html` <span class="badge info">Pinned to Copilot</span>` : ''}</td>
+          <td><span class=${'badge ' + ACTION[r.action].badge}>${ACTION[r.action].label}</span></td>
+          <td>${r.status === 'PUBLISHED' ? html`<span class="badge ok">Published</span>` : html`<span class="badge">Draft</span>`}</td>
+          <td>${r.source === 'LEARNYST' ? 'Learnyst' : 'Academy'}</td></tr>`)}</tbody></table></div></div>
+      <p class="story" style="margin:0">Sample rules for this prototype. A new academy starts with ten published Learnyst rules (SR 1); the stories and HLD do not list them.</p>
+      ${open && html`<${RuleSheet} id=${open === 'new' ? null : open} onClose=${() => setOpen(null)} />`}
+    </div>`;
+  }
+
+  function RuleSheet({ id, onClose }) {
+    const r = id ? E.rule(id) : null;
+    const teacher = S.role === 'Teacher';
+    const [f, setF] = useState(r ? { name: r.name, description: r.description, action: r.action, aiCheck: r.aiCheck, pinned: r.pinned, reportReason: r.reportReason } : { name: '', description: '', action: 'HOLD', aiCheck: true, pinned: false, reportReason: '' });
+    const [word, setWord] = useState(''); const [wordMsg, setWordMsg] = useState('');
+    const [wordTest, setWordTest] = useState('');
+    const [sample, setSample] = useState(''); const [result, setResult] = useState(null);
+    const [dlg, setDlg] = useState(null);
+    const [newWords, setNewWords] = useState([]);
+    const words = r ? S.words.filter(w => w.ruleId === r.id) : [];
+    const valid = f.name.trim() && f.description.trim() && f.action;
+    const save = () => { const saved = E.saveRule({ ...f, id: r && r.id, words: newWords }); if (!r) onClose(); return saved };
+    const wordHits = word.trim() && wordTest.trim() ? E.wordMatches(word, wordTest) : null;
+    return html`<div class="overlay" onClick=${e => e.target === e.currentTarget && onClose()}><aside class="sheet" role="dialog" aria-label="Rule">
+      <div class="sheet-h"><div><h3>${r ? `Rule ${r.number} · ${r.name}` : 'New rule'} ${r && (r.status === 'PUBLISHED' ? html`<span class="badge ok">Published</span>` : html`<span class="badge">Draft</span>`)}</h3>
+        <p>${r ? (r.source === 'LEARNYST' ? 'Provided by Learnyst — you can reword it (row 21)' : 'Written by your academy') : 'A new rule starts as a draft and does nothing until you publish it'}</p></div><button class="btn ghost" onClick=${onClose} aria-label="Close">✕</button></div>
+      <div class="sheet-b">
+        <div class="field"><label for="r-name">Rule name*</label><input id="r-name" class="inp" disabled=${!teacher} value=${f.name} onInput=${e => setF({ ...f, name: e.target.value })} placeholder="e.g. No asking for exam answers" /></div>
+        <div class="field"><label for="r-desc">What it means*</label><textarea id="r-desc" class="inp" disabled=${!teacher} value=${f.description} onInput=${e => setF({ ...f, description: e.target.value })} placeholder="Plain language — the AI judges against exactly this, and learners read it"></textarea></div>
+        <div class="field"><label>What happens when it is broken* <${Assume} id="N1">meanings</${Assume}></label>
+          <div class="radios">${Object.entries(ACTION).map(([k, a]) => html`<button class="rcard" role="radio" disabled=${!teacher} aria-checked=${f.action === k} onClick=${() => setF({ ...f, action: k })}><b><span class="dot"></span>${a.label}</b><span>${a.meaning}</span></button>`)}</div></div>
+        <div class="card"><div class="srow"><div><div class="t">Checked by AI <span class="story">row 30</span></div><div class="d">Off: the rule runs on its blocked words alone, and still works with the AI disabled.</div></div>
+            <button class="switch" role="switch" disabled=${!teacher} aria-checked=${f.aiCheck} aria-label="Checked by AI" onClick=${() => setF({ ...f, aiCheck: !f.aiCheck })}></button></div>
+          <div class="srow"><div><div class="t">Pin to Copilot <span class="story">row 31</span></div><div class="d">Always reaches a person, even when the academy is on Autopilot.</div></div>
+            <button class="switch" role="switch" disabled=${!teacher} aria-checked=${f.pinned} aria-label="Pin to Copilot" onClick=${() => setF({ ...f, pinned: !f.pinned })}></button></div></div>
+        <div class="field"><label for="r-reason">Reason shown to learners <span class="story">row 34 · P2</span></label><input id="r-reason" class="inp" disabled=${!teacher} value=${f.reportReason} onInput=${e => setF({ ...f, reportReason: e.target.value })} placeholder="What learners pick when they report under this rule" /></div>
+
+        <div class="card"><div class="card-h"><div><h3>Blocked words and web addresses</h3><p>Stop content on sight, with no AI check. One entry covers disguises: idiot also catches 1d10t, IDIOT, i d i o t, id**t. A web address covers its pages. <span class="story">rows 26–29 · HLD §3</span></p></div></div>
+          <div class="card-b">
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="w-new" style="flex:1;min-width:160px" disabled=${!teacher} value=${word} onInput=${e => { setWord(e.target.value); setWordMsg('') }} placeholder="Word or web address*" />
+              <button class="btn outline" disabled=${!teacher || !word.trim()} onClick=${() => { if (r) { const res = E.addWord(r.id, word); setWordMsg(res === 'DUPLICATE' ? 'That word is already on this rule.' : ''); if (res === 'OK') setWord('') } else { setNewWords([...newWords, word.trim()]); setWord('') } }}>Add</button></div>
+            <div class="field"><label for="w-test">Test this word before saving <span class="story">row 33 · P2</span></label><input id="w-test" class="inp" value=${wordTest} onInput=${e => setWordTest(e.target.value)} placeholder="Type sample text — e.g. Submit your class assignment" />
+              ${word.trim() && wordTest.trim() && html`<span class=${'badge ' + (wordHits ? 'bad' : 'ok')}>${wordHits ? `Would stop it — matched “${wordHits}”` : 'Would not stop this text'}</span>`}</div>
+            ${wordMsg && html`<span class="badge bad">${wordMsg}</span>`}
+            <table class="t" style="min-width:0"><thead><tr><th>Word or web address</th><th>Added by</th><th></th></tr></thead><tbody>
+              ${[...words.map(w => ({ ...w })), ...newWords.map((v, i) => ({ id: 'new' + i, value: v, addedBy: 'ACADEMY', pending: true }))].map(w => html`<tr><td class="mono">${w.value}</td><td>${w.addedBy === 'LEARNYST' ? 'Learnyst' : 'Academy'}${w.pending ? ' (saves with the rule)' : ''}</td>
+                <td style="text-align:right"><button class="btn sm ghost" disabled=${!teacher} onClick=${() => w.pending ? setNewWords(newWords.filter((_, i) => 'new' + i !== w.id)) : E.deleteWord(w.id)}>Delete</button></td></tr>`)}
+              ${!words.length && !newWords.length && html`<tr><td colspan="3" class="story">No blocked words — the AI check alone enforces this rule.</td></tr>`}</tbody></table>
+            ${words.some(w => w.addedBy === 'LEARNYST') && html`<span class="story" style="margin:0">Deleting a Learnyst word keeps it deleted for your academy, even when Learnyst updates the defaults (SR 2).</span>`}
+          </div></div>
+
+        ${r && html`<div class="card"><div class="card-h"><div><h3>Test this rule</h3><p>Type a sample post and see whether the rule catches it, before any learner is affected. <span class="story">row 32</span> <${Assume} id="C19">AI half simulated</${Assume}></p></div></div>
+          <div class="card-b"><textarea class="inp" id="r-sample" value=${sample} onInput=${e => setSample(e.target.value)} placeholder="e.g. Can anyone share tomorrow's mock answers?"></textarea>
+            <div><button class="btn outline" disabled=${!sample.trim()} onClick=${() => setResult(E.testRule(r.id, sample))}>Test</button></div>
+            ${result && html`<div style="display:grid;gap:6px">
+              <span class=${'badge ' + (result.words.length ? 'bad' : 'ok')}>${result.words.length ? `Blocked word: ${result.words.map(w => w.word + ' → “' + w.hit + '”').join(', ')}` : 'No blocked word matched'}</span>
+              <span class=${'badge ' + (result.ai && result.ai.breaks ? 'bad' : 'ok')}>${!r.aiCheck ? 'AI checking is off for this rule' : result.ai.breaks ? 'Simulated AI: breaks this rule' : 'Simulated AI: does not break this rule'}</span></div>`}</div></div>`}
+      </div>
+      <div class="sheet-f">
+        ${r && r.source === 'ACADEMY' && html`<button class="btn danger" disabled=${!teacher} style="margin-right:auto" onClick=${() => { E.deleteRule(r.id); onClose() }}>Delete rule</button>`}
+        ${r && r.status === 'PUBLISHED' && html`<button class="btn outline" disabled=${!teacher} onClick=${() => E.setRuleStatus(r.id, 'DRAFT')}>Unpublish</button>`}
+        ${r && r.status === 'DRAFT' && html`<button class="btn outline" disabled=${!teacher || !valid} onClick=${() => setDlg('publish')}>Publish</button>`}
+        <button class="btn primary" disabled=${!teacher || !valid} onClick=${() => (r && r.status === 'PUBLISHED' && (f.name !== r.name || f.description !== r.description)) ? setDlg('reword') : save()}>${r ? 'Save' : 'Create draft'}</button>
+      </div>
+      ${dlg && html`<div class="dialog-wrap"><div class="dialog" role="dialog"><h3>${dlg === 'publish' ? 'Publish this rule?' : 'Save the new wording?'}</h3>
+        <p>This rule applies only to content posted from now on. Posts that are already up will not be checked again. <span class="story">row 24 · SR 4</span></p>
+        <div class="f"><button class="btn outline" onClick=${() => setDlg(null)}>Cancel</button><button class="btn primary" onClick=${() => { save(); if (dlg === 'publish') E.setRuleStatus(r.id, 'PUBLISHED'); setDlg(null) }}>${dlg === 'publish' ? 'Publish' : 'Save'}</button></div></div></div>`}
+    </aside></div>`;
+  }
+
+  // ── settings ──
+  function Settings() {
+    const teacher = S.role === 'Teacher';
+    const [f, setF] = useState(() => JSON.parse(JSON.stringify(S.settings)));
+    const [exOpen, setExOpen] = useState(false);
+    const dirty = JSON.stringify(f) !== JSON.stringify(S.settings);
+    const set = patch => setF({ ...f, ...patch });
+    const Sw = ({ on, onClick, label }) => html`<button class="switch" role="switch" aria-checked=${on} aria-label=${label} disabled=${!teacher} onClick=${onClick}></button>`;
+    return html`<div class="a-page" style="padding-bottom:80px">
+      <div class="a-head"><div><h2>Moderation settings</h2><p>Set once for the academy. One product that needs to differ gets an exception. <span class="story">rows 2–15 · SR 5</span></p></div>
+        ${!teacher && html`<span class="badge warn">Read only — Teacher only</span>`}</div>
+      <div class="card"><div class="srow"><div><div class="t">AI moderation <span class="story">row 2</span></div><div class="d">Turn content checking on or off for the whole academy.</div></div><${Sw} on=${f.enabled} label="AI moderation" onClick=${() => set({ enabled: !f.enabled })} /></div></div>
+      <div class="card"><div class="card-h"><div><h3>Where it runs <span class="story">row 3</span></h3><p>The four places a learner writes. Start with one and widen later. In v1 these are only on/off switches.</p></div></div>
+        ${E.PLACES.map(p => html`<div class="srow"><div><div class="t">${p.label}</div><div class="d">${{ product_discussions: 'Discussions under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product', community: 'Posts and comments', feeds: 'Posts and comments', newsfeed: 'Discussions' }[p.id]}</div></div>
+          <${Sw} on=${f.places[p.id]} label=${p.label} onClick=${() => set({ places: { ...f.places, [p.id]: !f.places[p.id] } })} /></div>`)}</div>
+      <div class="card"><div class="card-h"><div><h3>Content review mode <span class="story">row 4</span></h3><p>Does content appear before or after the check? Every check takes about a second either way.</p></div></div>
+        <div class="card-b"><div class="radios">
+          <button class="rcard" role="radio" disabled=${!teacher} aria-checked=${f.reviewMode === 'REVIEW_FIRST'} onClick=${() => set({ reviewMode: 'REVIEW_FIRST' })}><b><span class="dot"></span>Review first <span class="badge">Default</span></b><span>Held until the verdict. Only the author sees it, marked waiting for review. Nothing bad ever appears.</span></button>
+          <button class="rcard" role="radio" disabled=${!teacher} aria-checked=${f.reviewMode === 'PUBLISH_FIRST'} onClick=${() => set({ reviewMode: 'PUBLISH_FIRST' })}><b><span class="dot"></span>Publish first</b><span>Live at once. If it breaks a rule it comes down. Conversation never waits.</span></button></div></div></div>
+      <div class="card"><div class="card-h"><div><h3>Moderation mode <span class="story">row 5</span></h3><p>Who acts on a flag once it is raised? <${Assume} id="C23">default</${Assume}></p></div></div>
+        <div class="card-b"><div class="radios">
+          ${[['AUTOPILOT', 'The rule\'s action is applied automatically.'], ['COPILOT', 'Nothing is stopped automatically; flagged content waits for a person.'], ['AI_DISABLED', 'The AI never runs. Blocked words and learner reports only.']].map(([k, d]) => html`<button class="rcard" role="radio" disabled=${!teacher} aria-checked=${f.moderationMode === k} onClick=${() => set({ moderationMode: k })}><b><span class="dot"></span>${MODE[k]}</b><span>${d}</span></button>`)}</div></div></div>
+      <div class="card"><div class="card-h"><div><h3>About your academy <span class="story">row 6</span></h3><p>So content is judged in the right context. Sent with every check.</p></div></div>
+        <div class="card-b"><div class="field"><label for="s-desc">Description*</label><textarea id="s-desc" class="inp" disabled=${!teacher} value=${f.description} onInput=${e => set({ description: e.target.value })}></textarea></div>
+          <div class="row2"><div class="field"><label for="s-age">Learner age group*</label><select id="s-age" class="inp" disabled=${!teacher} value=${f.ageGroup} onChange=${e => set({ ageGroup: e.target.value })}><option value="UNDER_18">Under 18</option><option value="ADULTS">Adults</option><option value="MIXED">Mixed</option></select></div>
+            <div class="field"><label for="s-tone">Tone of conversation*</label><select id="s-tone" class="inp" disabled=${!teacher} value=${f.tone} onChange=${e => set({ tone: e.target.value })}><option value="CASUAL">Casual</option><option value="PROFESSIONAL">Professional</option></select><span class="hint">Banter that is normal in one is not in the other.</span></div></div></div></div>
+      <div class="card"><div class="card-h"><div><h3>Repeat behaviour</h3><p>Handled without manual checking. <span class="story">rows 7–8</span></p></div></div>
+        <div class="card-b"><div class="row3">
+          <div class="field"><label for="s-rem">Number of removals*</label><input id="s-rem" type="number" min="1" class="inp" disabled=${!teacher} value=${f.removalsBeforeRestriction} onInput=${e => set({ removalsBeforeRestriction: Math.max(1, +e.target.value || 1) })} /><span class="hint">Confirmed removals that restrict a learner. Flags never count (SR 10).</span></div>
+          <div class="field"><label for="s-rep">Number of posts*</label><input id="s-rep" type="number" min="2" class="inp" disabled=${!teacher} value=${f.repeatCount} onInput=${e => set({ repeatCount: Math.max(2, +e.target.value || 2) })} /><span class="hint">Repeated content that counts as spam (P2).</span></div>
+          <div class="field"><label for="s-win">Within how long*</label><input id="s-win" type="number" min="1" class="inp" disabled=${!teacher} value=${f.repeatWindow} onInput=${e => set({ repeatWindow: Math.max(1, +e.target.value || 1) })} /><span class="hint">Minutes. <${Assume} id="C23">unit</${Assume}></span></div></div></div></div>
+      <div class="card"><div class="srow"><div><div class="t">Hold a new learner's first posts <span class="story">row 9 · P3</span></div><div class="d">For academies with free signup. Off by default.</div></div><${Sw} on=${f.holdFirstEnabled} label="Hold first posts" onClick=${() => set({ holdFirstEnabled: !f.holdFirstEnabled })} /></div>
+        ${f.holdFirstEnabled && html`<div class="srow"><div class="field"><label for="s-first">Number of first posts to hold*</label><input id="s-first" type="number" min="1" class="inp" style="max-width:140px" disabled=${!teacher} value=${f.holdFirstCount} onInput=${e => set({ holdFirstCount: Math.max(1, +e.target.value || 1) })} /></div><span></span></div>`}</div>
+      <div class="card"><div class="card-h"><div><h3>Exceptions <span class="story">rows 10–15 · P2</span></h3><p>One product set differently from the academy. Rules are only ever written in Rules — an exception can switch one off, never create one.</p></div>
+        <button class="btn outline" disabled=${!teacher} onClick=${() => setExOpen(true)}>+ Add exception</button></div>
+        <div class="tablewrap"><table class="t" style="min-width:560px"><thead><tr><th>Product</th><th>What is different</th><th>Set on</th><th></th></tr></thead><tbody>
+          ${S.exceptions.length ? S.exceptions.map(ex => { const pr = E.PRODUCTS.find(x => x.id === ex.productId); const diff = [ex.reviewMode && REVIEW[ex.reviewMode], ex.moderationMode && MODE[ex.moderationMode], ...ex.disabledRuleIds.map(id => 'Rule ' + E.rule(id).number + ' off')].filter(Boolean); return html`<tr><td>${pr.type} · ${pr.name}</td><td>${diff.join(' · ') || 'Nothing yet'}</td><td class="mono">t=${ex.setOn}</td><td style="text-align:right"><button class="btn sm ghost" disabled=${!teacher} onClick=${() => E.deleteException(ex.id)}>Remove</button></td></tr>` })
+            : html`<tr><td colspan="4" class="story">No exceptions. Most academies will have none.</td></tr>`}</tbody></table></div></div>
+      ${dirty && html`<div style="position:sticky;bottom:0;background:#fff;border:1px solid var(--a-border);border-radius:10px;padding:10px 14px;display:flex;gap:8px;justify-content:space-between;align-items:center;box-shadow:0 -4px 16px rgba(0,0,0,.06)">
+        <span class="story" style="margin:0">Unsaved changes. New settings apply to new content; nothing already up is re-checked.</span>
+        <span style="display:flex;gap:8px"><button class="btn outline" onClick=${() => setF(JSON.parse(JSON.stringify(S.settings)))}>Discard</button><button class="btn primary" disabled=${!teacher || !f.description.trim()} onClick=${() => E.saveSettings(f)}>Save changes</button></span></div>`}
+      ${exOpen && html`<${ExceptionDialog} onClose=${() => setExOpen(false)} />`}
+    </div>`;
+  }
+
+  function ExceptionDialog({ onClose }) {
+    const [p, setP] = useState(E.PRODUCTS[0].id); const [rm, setRm] = useState(''); const [mm, setMm] = useState(''); const [off, setOff] = useState([]);
+    return html`<div class="dialog-wrap"><div class="dialog" role="dialog" aria-label="Add exception" style="width:min(520px,100%)"><h3>Add an exception</h3>
+      <div class="field"><label for="x-p">Product*</label><select id="x-p" class="inp" value=${p} onChange=${e => setP(e.target.value)}>${E.PRODUCTS.map(x => html`<option value=${x.id}>${x.type} · ${x.name}</option>`)}</select></div>
+      <div class="row2"><div class="field"><label for="x-rm">Content review mode</label><select id="x-rm" class="inp" value=${rm} onChange=${e => setRm(e.target.value)}><option value="">Follow the academy</option><option value="REVIEW_FIRST">Review first</option><option value="PUBLISH_FIRST">Publish first</option></select></div>
+        <div class="field"><label for="x-mm">Moderation mode</label><select id="x-mm" class="inp" value=${mm} onChange=${e => setMm(e.target.value)}><option value="">Follow the academy</option><option value="AUTOPILOT">Autopilot</option><option value="COPILOT">Copilot</option><option value="AI_DISABLED">AI disabled</option></select></div></div>
+      <div class="field"><label>Switch rules off for this product <span class="story">row 11</span></label><div style="display:grid;gap:4px;max-height:160px;overflow:auto">
+        ${S.rules.filter(r => r.status === 'PUBLISHED').map(r => html`<label style="display:flex;gap:8px;font-weight:400"><input type="checkbox" checked=${off.includes(r.id)} onChange=${() => setOff(off.includes(r.id) ? off.filter(x => x !== r.id) : [...off, r.id])} />Rule ${r.number} · ${r.name}</label>`)}</div></div>
+      <div class="f"><button class="btn outline" onClick=${onClose}>Cancel</button><button class="btn primary" onClick=${() => { E.saveException({ productId: p, reviewMode: rm || null, moderationMode: mm || null, disabledRuleIds: off }); onClose() }}>Add exception</button></div></div></div>`;
+  }
+
+  // ── restrictions & bans ──
+  function Limits() {
+    const teacher = S.role === 'Teacher';
+    const rows = [];
+    Object.entries(S.members).forEach(([id, m]) => {
+      if (m.restricted) rows.push({ id, kind: 'Restricted', where: 'Whole academy', since: m.restricted.since, why: m.restricted.source === 'AUTOMATIC' ? `${m.removals} confirmed removals` : 'By a person', lift: () => E.liftRestriction(id) });
+      m.bans.forEach(b => rows.push({ id, kind: 'Banned', where: b.scope === 'ACADEMY' ? 'Whole academy' : E.PRODUCTS.find(x => x.id === b.productId).name, since: b.since, why: 'By a Teacher', lift: () => E.liftBan(id, b.id) }));
+    });
+    return html`<div class="a-page"><div class="a-head"><div><h2>Restrictions & bans</h2><p>Who is limited, where, and why. Restrict and ban from the queue, beside the content; this page is the list and the undo. <span class="story">rows 57–59 · SR 20</span></p></div></div>
+      <div class="card"><div class="tablewrap"><table class="t"><thead><tr><th>Learner</th><th>Restricted or banned</th><th>Where it applies</th><th>Why</th><th>Since</th><th></th></tr></thead><tbody>
+        ${rows.length ? rows.map(r => html`<tr><td><span style="display:flex;gap:6px;align-items:center"><${Avatar} id=${r.id} size=${22} />${E.person(r.id).name}</span></td><td>${r.kind === 'Restricted' ? html`<span class="badge warn">Restricted</span>` : html`<span class="badge bad">Banned</span>`}</td><td>${r.where}</td><td>${r.why}</td><td class="mono">${rel(r.since)}</td>
+          <td style="text-align:right"><button class="btn sm outline" disabled=${!teacher} title=${teacher ? '' : 'Teacher only'} onClick=${r.lift}>${r.kind === 'Restricted' ? 'Lift restriction' : 'Lift ban'}</button></td></tr>`)
+          : html`<tr><td colspan="6"><div class="empty"><b>No one is restricted or banned</b><span>Restrict or ban from a queue item's "Who wrote it" panel.</span></div></td></tr>`}</tbody></table></div></div></div>`;
+  }
+
+  // ── reports ──
+  function Reports() {
+    const st = E.stats();
+    const where = E.PLACES.filter(p => S.settings.places[p.id]).map(p => p.label).join(', ');
+    return html`<div class="a-page"><div class="a-head"><div><h2>Moderation reports</h2><p>Is moderation keeping up? Numbers for this demo session. <span class="story">rows 61–67</span></p></div></div>
+      <div class="kpis">
+        ${[[st.checked, 'Content checked'], [st.blocked, 'Blocked before publishing'], [st.held, 'Held or flagged for review'], [st.approvedAfterReview, 'Approved after review'], [st.removed, 'Removed'], [st.reported, 'Reported by learners'], [st.waiting, 'Waiting for review'], [st.oldest == null ? '—' : st.oldest + ' min', 'Longest waiting'], [st.unchecked, 'Published without a check']].map(([v, k]) => html`<div class="kpi"><span class="v">${v}</span><span class="k">${k}</span></div>`)}</div>
+      <p class="story" style="margin:0">Where it runs: ${where || 'nowhere'}</p>
+      <div class="card"><div class="card-h"><div><h3>Rule performance <span class="story">row 62</span></h3><p>Approved high → too strict. Wrong-flag rate = content a rule stopped that a Teacher then approved.</p></div></div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Rule</th><th>Times it stopped content</th><th>Approved anyway</th><th>Removed</th><th>Wrong-flag rate</th></tr></thead><tbody>
+          ${st.perRule.map(x => html`<tr><td>Rule ${x.rule.number} · ${x.rule.name}</td><td class="mono">${x.stopped}</td><td class="mono">${x.approvedAnyway}</td><td class="mono">${x.removed}</td>
+            <td>${x.wrongFlag == null ? html`<span class="story">—</span>` : html`<span style="display:flex;gap:8px;align-items:center"><span class="bar" style="width:90px"><i style=${`width:${x.wrongFlag}%;background:${x.wrongFlag > 30 ? 'var(--a-danger)' : 'var(--a-selected)'}`}></i></span><span class="mono">${x.wrongFlag}%</span></span>`}</td></tr>`)}</tbody></table></div></div>
+      <div class="card"><div class="card-h"><div><h3>Moderation log <span class="story">row 67</span></h3><p>Every action, including content that was blocked and never published — the evidence when a decision is disputed.</p></div></div>
+        <div class="tablewrap"><table class="t"><thead><tr><th>Action</th><th>Content</th><th>Rule</th><th>When</th></tr></thead><tbody>
+          ${[...S.records.map(b => ({ a: b.byAi ? 'Blocked by the AI' : 'Blocked word', content: b.text, rule: E.rule(b.ruleId), at: b.at })),
+             ...S.queue.filter(q => q.decidedAt != null).map(q => ({ a: (q.restored ? 'Restored' : q.status === 'APPROVED' ? 'Approved' : 'Removed') + ' by ' + (q.decidedBy || 'a person'), content: excerpt(contentOf(q.contentId)), rule: E.rule(q.ruleId), at: q.decidedAt }))]
+            .sort((a, b) => b.at - a.at).map(x => html`<tr><td>${x.a}</td><td><div class="cell-content"><span>${x.content}</span></div></td><td>${x.rule ? 'Rule ' + x.rule.number : '—'}</td><td class="mono">${rel(x.at)}</td></tr>`)}
+          ${!S.records.length && !S.queue.some(q => q.decidedAt != null) && html`<tr><td colspan="4" class="story">Nothing yet.</td></tr>`}</tbody></table></div></div></div>`;
+  }
+
+  // ── behind the scenes ──
+  function Log() {
+    const lanes = { learner: ['Learner app', 'var(--lane-learner)'], rails: ['Rails', 'var(--lane-rails)'], ai: ['ai-server', 'var(--lane-ai)'], admin: ['Admin app', 'var(--lane-admin)'], sys: ['Demo', 'var(--lane-sys)'] };
+    return html`<section class="logbar" aria-label="Behind the scenes"><div class="h"><b>Behind the scenes — what each system does, newest first</b>
+      <span class="lanes">${Object.values(lanes).map(([l, c]) => html`<span style=${`--c:${c}`}>${l}</span>`)}</span></div>
+      <div class="logs">${S.log.slice(0, 120).map(e => { const [l, c] = lanes[e.lane] || lanes.sys; return html`<div class="lg" style=${`--c:${c}`}><span class="tm">t=${e.t}</span><span class="ln">${l}</span><span class="tx">${e.text}${e.assumption && html`<span class="assume" title=${e.assumption.split(' · ').map(a => ASSUME[a] || a).join(' ')}>Assumption · ${e.assumption}</span>`}</span></div>` })}</div></section>`;
+  }
+
+  render(html`<${App} />`, document.getElementById('app'));
+  if (fresh) ls.set('mod-proto-seeded-v1', true);
+})();
+
+</script>

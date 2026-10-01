@@ -1,0 +1,237 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Community Posts — CHANGED (moderation)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Community Posts — CHANGED (moderation)
+  description: |-
+    EXISTING query, changed · Priority P1 · stories 72, 73, 76 · HLD §13 ("Held content — a real row, visible only to its author").
+    Visibility rule for every node, and for nested comments: everyone except the author receives only
+    PUBLISHED content. The author also receives their own HELD, REMOVED and BLOCKED content with
+    moderationNotice, so they can see it still exists and why (stories 72, 73, 76, 71). moderationNotice is
+    null for everyone but the author. Counts (totalCount, totalDiscussions, commentCount) must not count
+    content the viewer cannot see — see open question C29. What staff viewing the learner app see is C29 too.
+    Arguments are unchanged (schoolId and deviceType omitted from input below). Bodhi callers today:
+    CommunityPostListRepo (social-community-post-listing).
+  tags:
+    - moderation
+    - learner
+    - community
+    - changed-existing
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListCommunityPosts
+  return_type: Existing connection type of listCommunityPosts (name unchanged) — nodes gain moderationStatus and moderationNotice
+  example_document: |-
+    query ListCommunityPosts($schoolId: ID, $deviceType: Int, $communityId: ID!, $first: Int, $after: String) {
+      listCommunityPosts(schoolId: $schoolId, deviceType: $deviceType, communityId: $communityId, first: $first, after: $after) {
+        nodes {
+          id
+          title
+          content
+          featuredImage
+          attachmentUrl
+          status
+          createdAt
+          user { id name profilePhotoFileName }
+          moderationStatus
+          moderationNotice {
+            kind
+            ruleNumber
+            ruleName
+            ruleDescription
+            afterPublishing
+            supportMessage
+            helpline
+            updatedAt
+          }
+        }
+        pageInfo { endCursor hasNextPage hasPreviousPage startCursor }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: community_id
+      type: id
+      required: true
+      nullable: false
+      description: Existing argument.
+      example: '12'
+      depends_on:
+        operation: contracts/graphql/_reference/show_community
+        field_returned: id
+        pass_as: community_id
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: Existing response; nodes filtered by moderation status and carrying moderationStatus and moderationNotice.
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Existing field. Now filtered by moderation status — see description.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: Existing field.
+              example: '5521'
+              read_only: true
+            - name: title
+              type: string
+              nullable: false
+              description: Existing field.
+              example: Notes for chapter 4
+            - name: content
+              type: string
+              nullable: false
+              description: Existing field.
+              example: Sharing my notes
+            - name: featured_image
+              type: string
+              nullable: true
+              description: Existing field.
+              example: null
+            - name: moderation_status
+              type: enum
+              nullable: false
+              description: 'Where this content stands in moderation. Everyone except the author only ever receives PUBLISHED content; the author also receives their own HELD, REMOVED and BLOCKED content so they can see it still exists and why (stories 72, 73, 76).'
+              example: PUBLISHED
+              enum_values:
+                - value: PUBLISHED
+                  description: 'Visible to everyone who can see this place. Covers content that passed the check, was published without a check (Unchecked), got Guidance or a Report-action flag, or was approved.'
+                - value: HELD
+                  description: 'Exists but visible only to its author, marked Waiting for review — review-first content waiting for its verdict, a Hold rule, a restricted learner, a repeated post or a new learner''s first posts.'
+                - value: REMOVED
+                  description: 'Taken down from the queue by a Teacher or Teaching Assistant. Visible only to its author, with the rule. Restorable for 90 days.'
+                - value: BLOCKED
+                  description: 'Stopped by a Block rule after the content had been written (an AI verdict). Visible only to its author, with the rule. Never restorable. See open question C20.'
+            - name: moderation_notice
+              type: object
+              nullable: true
+              description: 'What the author should be told about this content. Returned ONLY to the author — null for every other viewer, and null when there is nothing to say (clean content, or a Report-action flag, where the learner is told nothing). The learner always sees the academy''s own rule wording, never machine-written text (system rule 8).'
+              example:
+                kind: BLOCKED
+                rule_number: 6
+                rule_name: No spam or advertising
+                rule_description: 'No promotions, advertising or selling of any kind.'
+                after_publishing: false
+                support_message: null
+                helpline: null
+                updated_at: '2026-09-30T10:15:00Z'
+              fields:
+                - name: kind
+                  type: enum
+                  nullable: false
+                  description: Which message to show. Drives the learner-app copy.
+                  example: BLOCKED
+                  enum_values:
+                    - value: WAITING_FOR_REVIEW
+                      description: 'Content is HELD. Worded as a check, not a verdict. rule_* is filled when a Hold rule (or a flag waiting for a person) caused it; null while a review-first post waits for its verdict or when the learner is restricted.'
+                    - value: GUIDANCE
+                      description: Content is live but a Guidance rule matched — a gentle note naming the rule.
+                    - value: BLOCKED
+                      description: A Block rule stopped this content after it was written — names the rule and why (the rule description).
+                    - value: REMOVED
+                      description: A Teacher or Teaching Assistant removed this content — names the rule.
+                    - value: APPROVED
+                      description: 'A person approved content that was held — it is now live. Spec: after a decision the learner is always told.'
+                    - value: SELF_HARM_SUPPORT
+                      description: 'The rule involved is the self-harm rule. Never names the rule; carries the fixed support message and the helpline instead (spec, HLD §12).'
+                - name: rule_number
+                  type: integer
+                  nullable: true
+                  description: 'The rule''s number in creation order, shown as "Rule 6". Null for SELF_HARM_SUPPORT and when no rule is involved.'
+                  example: 6
+                - name: rule_name
+                  type: string
+                  nullable: true
+                  description: The academy's own rule name. Null for SELF_HARM_SUPPORT and when no rule is involved.
+                  example: No spam or advertising
+                - name: rule_description
+                  type: string
+                  nullable: true
+                  description: 'The academy''s own rule description — the "why" shown to the learner. Never the AI''s reason sentence, which is admin-only.'
+                  example: 'No promotions, advertising or selling of any kind.'
+                - name: after_publishing
+                  type: boolean
+                  nullable: false
+                  description: True when other people could see the content before it came down (publish first). Lets the app say "taken down" instead of "can't be published" (story 76).
+                  example: false
+                - name: support_message
+                  type: string
+                  nullable: true
+                  description: Rails' fixed support message. Set only for SELF_HARM_SUPPORT. Who owns this text is open question C24.
+                  example: null
+                - name: helpline
+                  type: string
+                  nullable: true
+                  description: The helpline shown instead of a rule name. Set only for SELF_HARM_SUPPORT (story 78). Source of the helpline is open question C24.
+                  example: null
+                - name: updated_at
+                  type: datetime
+                  nullable: false
+                  description: When this notice last changed — lets the app show a decision once it lands.
+                  example: '2026-09-30T10:15:00Z'
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid learner session token — same as every learner query today.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

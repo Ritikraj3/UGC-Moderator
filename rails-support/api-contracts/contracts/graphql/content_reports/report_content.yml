@@ -1,0 +1,142 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Report Content (learner) — NEW
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Report Content (learner) — NEW
+  description: |-
+    NEW mutation · Priority P1 · story 80 · HLD §7 · replaces the Report button's createSupportTicket call.
+    Today Report raises a help-desk ticket (createSupportTicket, category 48, detailInfo.supportType 9, the content
+    id inside free-text JSON — built by bodhi-raise-ticket-modal from srcDetails). That cannot be the moderation
+    record (HLD §7). This mutation writes a content_reports row with a typed content reference and the rule the
+    learner picked. No AI call — a report is a human saying something is wrong. The content stays live and
+    appears in the queue's Reported tab. A report on content the AI passed is how a miss is learned (HLD §15).
+    Note: today a reply's Report sends the parent discussionId, not the reply id (discussion-reply-list.ts) —
+    this mutation takes the reply itself (DISCUSSION_REPLY). Whether anything still goes to the help desk is open item A3.
+  tags:
+    - moderation
+    - learner
+    - reports
+    - new
+    - p1
+  side_effects:
+    - creates_content_report
+    - creates_or_updates_queue_item
+    - writes_moderation_log
+  idempotent: false
+graphql:
+  operation_type: mutation
+  operation_name: ReportContent
+  input_type: ReportContentInput
+  return_type: ReportContentPayload
+  example_document: |-
+    mutation ReportContent($input: ReportContentInput!) {
+      reportContent(input: $input) {
+        message
+        report { id createdAt }
+      }
+    }
+input:
+  fields:
+    - name: content_type
+      type: enum
+      required: true
+      nullable: false
+      description: Which Rails model the reported content lives in — gives the report a real foreign key (HLD §7).
+      example: COMMUNITY_POST
+      enum_values:
+        - value: COMMUNITY_POST
+          description: A community post — Rails Post + CommunityContent (createCommunityPost / updateCommunityPost).
+        - value: NEWSFEED_POST
+          description: A feed post — Rails NewsfeedPost (createNewsfeedPost / updateNewsfeedPost).
+        - value: DISCUSSION
+          description: A DiscussionBoard row — a comment on a community/feed post (postId) or a thread in a product discussion (packageId/courseId).
+        - value: DISCUSSION_REPLY
+          description: A Comment row — a reply under a DiscussionBoard (createComment / updateComment).
+    - name: content_id
+      type: id
+      required: true
+      nullable: false
+      description: 'Id of the reported post, discussion or reply.'
+      example: '5521'
+      depends_on:
+        operation: contracts/graphql/community_posts/list_community_posts
+        field_returned: id
+        pass_as: content_id
+        filter_hint: 'Or listSocialsNewsfeedPosts (NEWSFEED_POST), listDiscussionBoards nodes (DISCUSSION) or their comments (DISCUSSION_REPLY).'
+    - name: rule_id
+      type: id
+      required: true
+      nullable: false
+      description: '"Rule broken*" — the rule the learner picked (story 80).'
+      example: '42'
+      depends_on:
+        operation: contracts/graphql/community_rules/list_community_rules
+        field_returned: id
+        pass_as: rule_id
+        ui_hint: Show report_reason as the option label.
+    - name: note
+      type: string
+      required: false
+      nullable: true
+      description: '"Note" — optional free text from the learner (story 80). HLD §7 does not mention a note field — see open question C13.'
+      example: He keeps posting this in every group
+      default: null
+      max_length: 1000
+response:
+  success:
+    http_status: 200
+    description: The report was recorded.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst mutations return.'
+        example: Thanks — a Teacher will review it.
+      - name: report
+        type: object
+        nullable: false
+        description: The report row.
+        example:
+          id: '1201'
+          created_at: '2026-09-30T10:20:00Z'
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: content_reports id.
+            example: '1201'
+            read_only: true
+          - name: created_at
+            type: datetime
+            nullable: false
+            description: When it was reported.
+            example: '2026-09-30T10:20:00Z'
+  errors:
+    business_errors:
+      - code: CONTENT_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: CONTENT_NOT_FOUND
+        field: content_id
+        message: This content no longer exists.
+        description: No content with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: RULE_NOT_PUBLISHED
+        http_status: 200
+        graphql_extension_code: RULE_NOT_PUBLISHED
+        field: rule_id
+        message: Please pick one of the community rules.
+        description: rule_id is not a published rule of this academy.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid learner session token — same as every learner query today.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

@@ -1,0 +1,151 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Show My Moderation Status (learner) — NEW
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Show My Moderation Status (learner) — NEW
+  description: |-
+    NEW query · Priority P1 · story 77 ("view why they are restricted") · system rules 13, 14, 16.
+    Tells the signed-in learner whether they are restricted (everything they post is reviewed first — always
+    academy-wide) and whether they are banned from posting anywhere, so the app can explain why their content is
+    not appearing. A ban never touches enrolment. The exact learner-facing wording is not in the sources.
+  tags:
+    - moderation
+    - learner
+    - restrictions
+    - new
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ShowMyModerationStatus
+  return_type: LearnerModerationStatus
+  example_document: |-
+    query ShowMyModerationStatus($productId: Int) {
+      showMyModerationStatus(productId: $productId) {
+        isRestricted
+        restrictedSince
+        restrictionSource
+        bans { scope since product { id type name } }
+      }
+    }
+input:
+  fields:
+    - name: product_id
+      type: integer
+      required: false
+      nullable: true
+      description: 'Optional. When set, only a ban that applies to this product (or an academy ban) is returned.'
+      example: null
+      default: null
+      min_value: 1
+response:
+  success:
+    http_status: 200
+    description: The learner's current limits.
+    fields:
+      - name: is_restricted
+        type: boolean
+        nullable: false
+        description: True when everything the learner posts is held for review (system rule 16).
+        example: true
+      - name: restricted_since
+        type: datetime
+        nullable: true
+        description: When the restriction started.
+        example: '2026-09-28T08:00:00Z'
+      - name: restriction_source
+        type: enum
+        nullable: true
+        description: 'Why: the confirmed-removal threshold (automatic) or a Teacher / Teaching Assistant.'
+        example: AUTOMATIC
+        enum_values:
+          - value: AUTOMATIC
+            description: The learner passed the academy's number of confirmed removals — the only automatic step.
+          - value: TEACHER
+            description: A Teacher or Teaching Assistant restricted the learner from the queue.
+      - name: bans
+        type: array
+        nullable: false
+        description: Active bans. An academy ban replaces product bans (system rule 19).
+        example: []
+        items:
+          type: object
+          fields:
+            - name: scope
+              type: enum
+              nullable: false
+              description: Product or academy.
+              example: PRODUCT
+              enum_values:
+                - value: PRODUCT
+                  description: Banned from posting in one product.
+                - value: ACADEMY
+                  description: Banned from posting anywhere in the academy. Replaces any product ban.
+            - name: since
+              type: datetime
+              nullable: false
+              description: When the ban started.
+              example: '2026-09-29T09:00:00Z'
+            - name: product
+              type: object
+              nullable: true
+              description: The product for a PRODUCT ban; null for an ACADEMY ban.
+              example:
+                id: '314'
+                type: COURSE
+                name: NEET Biology 2027
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Product id.
+                  example: '314'
+                  read_only: true
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Product type.
+                  example: COURSE
+                  enum_values:
+                    - value: COURSE
+                      description: Course.
+                    - value: BATCH
+                      description: Batch.
+                    - value: BUNDLE
+                      description: Bundle.
+                    - value: MOCK_TEST
+                      description: Mock test.
+                    - value: TEST_SERIES
+                      description: Test series.
+                    - value: EBOOK
+                      description: Ebook.
+                    - value: WEBINAR
+                      description: Webinar.
+                    - value: FREE_RESOURCE
+                      description: Free resource.
+                    - value: PODCAST
+                      description: Podcast.
+                    - value: CUSTOM
+                      description: Custom product.
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Product name.
+                  example: NEET Biology 2027
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid learner session token — same as every learner query today.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

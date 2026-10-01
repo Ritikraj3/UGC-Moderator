@@ -1,0 +1,80 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Delete Moderation Blocked Word
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Delete Moderation Blocked Word
+  description: |-
+    NEW mutation · Priority P1 · story 29 · system rule 2 · Teacher only.
+    Deletes a word, including one provided by Learnyst. A deleted Learnyst word stays deleted for this academy
+    even when Learnyst updates the defaults — Rails must remember the deletion, not just drop the row.
+  tags:
+    - moderation
+    - admin
+    - blocked-words
+    - p1
+  side_effects:
+    - deletes_blocked_word
+    - records_deleted_default
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: DeleteModerationBlockedWord
+  input_type: DeleteModerationBlockedWordInput
+  return_type: DeleteModerationBlockedWordPayload
+  example_document: |-
+    mutation DeleteModerationBlockedWord($input: DeleteModerationBlockedWordInput!) {
+      deleteModerationBlockedWord(input: $input) {
+        message
+      }
+    }
+input:
+  fields:
+    - name: word_id
+      type: id
+      required: true
+      nullable: false
+      description: The word.
+      example: '900'
+      depends_on:
+        operation: contracts/graphql/moderation_blocked_words/list_moderation_blocked_words
+        field_returned: id
+        pass_as: word_id
+response:
+  success:
+    http_status: 200
+    description: Deleted.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+  errors:
+    business_errors:
+      - code: BLOCKED_WORD_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: BLOCKED_WORD_NOT_FOUND
+        field: word_id
+        message: This blocked word no longer exists.
+        description: No blocked word with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

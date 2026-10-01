@@ -1,0 +1,100 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Show Moderation Queue Summary
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Show Moderation Queue Summary
+  description: |-
+    NEW query · Priority P1 · stories 43, 44 · spec "The header shows how long the oldest item has waited".
+    How much is waiting and how long the oldest has waited — Indian IT rules give each academy 36 hours to take
+    unlawful content down, and that clock runs against this number (story notes). Also the per-tab counts.
+    No notifications in v1 — this count on the dashboard is how the queue is not forgotten (spec — Settings).
+  tags:
+    - moderation
+    - admin
+    - queue
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ShowModerationQueueSummary
+  return_type: ModerationQueueSummary
+  example_document: |-
+    query ShowModerationQueueSummary($contentArea: ModerationContentAreaEnum) {
+      showModerationQueueSummary(contentArea: $contentArea) {
+        waitingCount
+        oldestWaitingSince
+        needsReviewCount
+        reportedCount
+        uncheckedCount
+      }
+    }
+input:
+  fields:
+    - name: content_area
+      type: enum
+      required: false
+      nullable: true
+      description: 'Optional: summarise one content area.'
+      example: null
+      default: null
+      enum_values:
+        - value: PRODUCT_DISCUSSIONS
+          description: 'The discussion under any course, bundle, batch, mock test, test series, ebook, webinar, free resource, podcast or custom product (spec — Scope).'
+        - value: COMMUNITY
+          description: Community posts and their comments (spec — Scope).
+        - value: FEEDS
+          description: Feed posts and their comments (spec — Scope).
+        - value: NEWSFEED
+          description: Newsfeed discussions (spec — Scope).
+response:
+  success:
+    http_status: 200
+    description: Queue counts.
+    fields:
+      - name: waiting_count
+        type: integer
+        nullable: false
+        description: Items waiting for a person (story 43).
+        example: 12
+      - name: oldest_waiting_since
+        type: datetime
+        nullable: true
+        description: When the oldest waiting item started waiting (story 44). Null when nothing waits.
+        example: '2026-09-29T14:00:00Z'
+      - name: needs_review_count
+        type: integer
+        nullable: false
+        description: Needs review tab.
+        example: 9
+      - name: reported_count
+        type: integer
+        nullable: false
+        description: Reported tab.
+        example: 2
+      - name: unchecked_count
+        type: integer
+        nullable: false
+        description: Unchecked tab — published without a check (story 45).
+        example: 1
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: You do not have access to moderation.
+        description: Caller is neither a Teacher nor a Teaching Assistant of this academy. Moderation permissions are academy-wide (system rule 18).
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

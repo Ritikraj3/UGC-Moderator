@@ -1,0 +1,143 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Test Moderation Rule
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Test Moderation Rule
+  description: |-
+    NEW mutation · Priority P1 · story 32 · spec "Test before publishing" · Teacher only · BLOCKED ON C19.
+    Type a sample post, see whether the rule catches it — before any learner is affected. The blocked-word half
+    runs locally in Rails and can answer at once. The AI half has NO path in the HLD: the only AI call is the
+    async check keyed by a real content_id, and there is no synchronous path (HLD §18). Until C19 is decided,
+    ai_verdict is null and ai_check_status says why. Nothing is stored and no learner is affected.
+  tags:
+    - moderation
+    - admin
+    - rules
+    - p1
+    - blocked-on-open-question
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: TestModerationRule
+  input_type: TestModerationRuleInput
+  return_type: TestModerationRulePayload
+  example_document: |-
+    mutation TestModerationRule($input: TestModerationRuleInput!) {
+      testModerationRule(input: $input) {
+        wordMatches { word matchedText }
+        aiCheckStatus
+        aiVerdict { breaksRule reason confidence }
+      }
+    }
+input:
+  fields:
+    - name: rule_id
+      type: id
+      required: true
+      nullable: false
+      description: The rule to test — usually a draft.
+      example: '51'
+      depends_on:
+        operation: contracts/graphql/moderation_rules/list_moderation_rules
+        field_returned: id
+        pass_as: rule_id
+    - name: sample_text
+      type: string
+      required: true
+      nullable: false
+      description: The sample post.
+      example: Can anyone share the answers for tomorrow's mock?
+      min_length: 1
+      max_length: 5000
+response:
+  success:
+    http_status: 200
+    description: Whether the rule would catch the sample.
+    fields:
+      - name: word_matches
+        type: array
+        nullable: false
+        description: 'Blocked words on the rule that matched, with the disguised text they caught.'
+        example: []
+        items:
+          type: object
+          fields:
+            - name: word
+              type: string
+              nullable: false
+              description: The blocked word as stored.
+              example: idiot
+            - name: matched_text
+              type: string
+              nullable: false
+              description: What it matched in the sample.
+              example: 1d10t
+      - name: ai_check_status
+        type: enum
+        nullable: false
+        description: Whether an AI verdict is included.
+        example: NOT_AVAILABLE
+        enum_values:
+          - value: CHECKED
+            description: ai_verdict is filled.
+          - value: AI_CHECK_OFF
+            description: The rule has AI checking off.
+          - value: NOT_AVAILABLE
+            description: No synchronous AI path exists yet — open question C19.
+      - name: ai_verdict
+        type: object
+        nullable: true
+        description: 'The AI''s answer for the sample, once C19 gives it a path.'
+        example: null
+        fields:
+          - name: breaks_rule
+            type: boolean
+            nullable: false
+            description: Would the rule catch it.
+            example: true
+          - name: reason
+            type: string
+            nullable: true
+            description: The AI's sentence.
+            example: Asks for answers to a live exam.
+          - name: confidence
+            type: enum
+            nullable: true
+            description: low / medium / high.
+            example: high
+            enum_values:
+              - value: LOW
+                description: Low.
+              - value: MEDIUM
+                description: Medium.
+              - value: HIGH
+                description: High.
+  errors:
+    business_errors:
+      - code: RULE_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: RULE_NOT_FOUND
+        field: rule_id
+        message: This rule no longer exists.
+        description: No rule with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

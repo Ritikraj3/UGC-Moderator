@@ -1,0 +1,209 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Unpublish Moderation Rule
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Unpublish Moderation Rule
+  description: |-
+    NEW mutation · Priority P1 · story 25 · Teacher only.
+    Stops enforcing the rule and stops showing it to learners. Takes it back to draft — the rule and its blocked
+    words are kept (story notes).
+  tags:
+    - moderation
+    - admin
+    - rules
+    - p1
+  side_effects:
+    - unpublishes_rule
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: UnpublishModerationRule
+  input_type: UnpublishModerationRuleInput
+  return_type: UnpublishModerationRulePayload
+  example_document: |-
+    mutation UnpublishModerationRule($input: UnpublishModerationRuleInput!) {
+      unpublishModerationRule(input: $input) {
+        message
+        rule {
+          id
+          number
+          name
+          description
+          action
+          aiCheckEnabled
+          checkedBy
+          pinnedToCopilot
+          reportReason
+          status
+          source
+          isSelfHarm
+          blockedWordCount
+          publishedAt
+          updatedAt
+        }
+      }
+    }
+input:
+  fields:
+    - name: rule_id
+      type: id
+      required: true
+      nullable: false
+      description: The rule.
+      example: '42'
+      depends_on:
+        operation: contracts/graphql/moderation_rules/list_moderation_rules
+        field_returned: id
+        pass_as: rule_id
+response:
+  success:
+    http_status: 200
+    description: 'The rule, now DRAFT.'
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+      - name: rule
+        type: object
+        nullable: false
+        description: The rule.
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: Rule id.
+            example: '42'
+            read_only: true
+          - name: number
+            type: integer
+            nullable: false
+            description: 'Numbered in creation order — no reordering, no priority (spec). Shown as "Rule 6".'
+            example: 6
+          - name: name
+            type: string
+            nullable: false
+            description: '"Rule name*".'
+            example: No spam or advertising
+          - name: description
+            type: string
+            nullable: false
+            description: '"What it means*" — the description the AI judges against and the learner reads.'
+            example: 'No promotions, advertising or selling of any kind.'
+          - name: action
+            type: enum
+            nullable: false
+            description: '"What happens when it is broken*".'
+            example: BLOCK
+            enum_values:
+              - value: GUIDANCE
+                description: 'Goes live, not queued, learner gets a gentle note.'
+              - value: REPORT
+                description: 'Goes live, queued for a person, learner is told nothing.'
+              - value: HOLD
+                description: 'Not live, queued, learner told which rule it is being checked against.'
+              - value: BLOCK
+                description: 'Not live, not queued, learner told the rule and why.'
+          - name: ai_check_enabled
+            type: boolean
+            nullable: false
+            description: '"Checked by AI" (stories 17, 30). Off → runs on its blocked words alone, and still works with the AI disabled.'
+            example: true
+          - name: checked_by
+            type: enum
+            nullable: false
+            description: '"Checked by" column of the rules list (story 18) — derived from ai_check_enabled and whether it has blocked words.'
+            example: WORDS_AND_AI
+            enum_values:
+              - value: WORDS
+                description: Blocked words only (AI checking off). Still works with the AI disabled.
+              - value: AI
+                description: AI only — no blocked words attached.
+              - value: WORDS_AND_AI
+                description: Both blocked words and the AI check.
+              - value: NONE
+                description: Neither — published to learners as a report reason only; nothing is checked.
+            computed: true
+            computed_description: ai_check_enabled combined with blocked_word_count > 0.
+          - name: pinned_to_copilot
+            type: boolean
+            nullable: false
+            description: 'Always reaches a person even when the academy is on Autopilot (story 31). Rule 5, self-harm, is pinned by default (spec).'
+            example: false
+          - name: report_reason
+            type: string
+            nullable: true
+            description: '"Reason shown to learners" when reporting under this rule (stories 17, 34).'
+            example: Spam or advertising
+          - name: status
+            type: enum
+            nullable: false
+            description: 'Draft until published (story 23, 25).'
+            example: PUBLISHED
+            enum_values:
+              - value: DRAFT
+                description: Does nothing and is not shown to learners. New rules start here; unpublishing returns a rule here.
+              - value: PUBLISHED
+                description: Shown to learners and enforced from the moment it was published.
+          - name: source
+            type: enum
+            nullable: false
+            description: Provided by Learnyst or written by the academy (story 21).
+            example: LEARNYST
+            enum_values:
+              - value: LEARNYST
+                description: One of the ready-made rules Learnyst ships.
+              - value: ACADEMY
+                description: Written by the academy.
+          - name: is_self_harm
+            type: boolean
+            nullable: false
+            description: 'Read-only marker on the Learnyst self-harm rule. Rails uses it to show the fixed message and helpline and never name the rule (system rule 9, HLD §12).'
+            example: false
+            read_only: true
+          - name: blocked_word_count
+            type: integer
+            nullable: false
+            description: How many blocked words are on this rule.
+            example: 12
+          - name: published_at
+            type: datetime
+            nullable: true
+            description: When it was last published — it applies to content posted from this moment (system rule 4).
+            example: '2026-09-01T08:00:00Z'
+          - name: updated_at
+            type: datetime
+            nullable: false
+            description: Last change.
+            example: '2026-09-01T08:00:00Z'
+  errors:
+    business_errors:
+      - code: RULE_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: RULE_NOT_FOUND
+        field: rule_id
+        message: This rule no longer exists.
+        description: No rule with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

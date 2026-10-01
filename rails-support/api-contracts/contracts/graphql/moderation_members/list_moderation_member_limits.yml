@@ -1,0 +1,236 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Restricted and Banned Learners
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Restricted and Banned Learners
+  description: |-
+    NEW query · Priority P1 · story 57 ("Learner, Restricted or banned, Where it applies, Since").
+    The Restrictions & bans screen — the list and the undo (system rule 20). Filterable and paginated.
+  tags:
+    - moderation
+    - admin
+    - restrictions
+    - bans
+    - p1
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListModerationMemberLimits
+  return_type: ModerationMemberLimitConnection
+  example_document: |-
+    query ListModerationMemberLimits($kind: ModerationMemberLimitKindEnum, $first: Int, $after: String) {
+      listModerationMemberLimits(kind: $kind, first: $first, after: $after) {
+        nodes {
+          id
+          kind
+          learner { id name profilePhotoFileName }
+          scope
+          product { id type name }
+          source
+          since
+        }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: kind
+      type: enum
+      required: false
+      nullable: true
+      description: Only restrictions or only bans.
+      example: null
+      default: null
+      enum_values:
+        - value: RESTRICTED
+          description: Restricted — everything they post is reviewed first. Always academy-wide.
+        - value: BANNED
+          description: Banned from posting — in one product or the whole academy.
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: Restricted and banned learners.
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Rows.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: Restriction or ban id.
+              example: '61'
+              read_only: true
+            - name: kind
+              type: enum
+              nullable: false
+              description: '"Restricted or banned".'
+              example: BANNED
+              enum_values:
+                - value: RESTRICTED
+                  description: Restricted — everything they post is reviewed first. Always academy-wide.
+                - value: BANNED
+                  description: Banned from posting — in one product or the whole academy.
+            - name: learner
+              type: object
+              nullable: false
+              description: '"Learner".'
+              example:
+                id: '9001'
+                name: Asha K
+                profile_photo_file_name: null
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: User id.
+                  example: '9001'
+                  read_only: true
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Display name.
+                  example: Asha K
+                - name: profile_photo_file_name
+                  type: string
+                  nullable: true
+                  description: 'Existing avatar field, as on posts today.'
+                  example: null
+            - name: scope
+              type: enum
+              nullable: true
+              description: '"Where it applies" — for bans. Restrictions are always academy-wide.'
+              example: PRODUCT
+              enum_values:
+                - value: PRODUCT
+                  description: Banned from posting in one product.
+                - value: ACADEMY
+                  description: Banned from posting anywhere in the academy. Replaces any product ban.
+            - name: product
+              type: object
+              nullable: true
+              description: The product for a PRODUCT ban.
+              example:
+                id: '314'
+                type: COURSE
+                name: NEET Biology 2027
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Product id.
+                  example: '314'
+                  read_only: true
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Product type.
+                  example: COURSE
+                  enum_values:
+                    - value: COURSE
+                      description: Course.
+                    - value: BATCH
+                      description: Batch.
+                    - value: BUNDLE
+                      description: Bundle.
+                    - value: MOCK_TEST
+                      description: Mock test.
+                    - value: TEST_SERIES
+                      description: Test series.
+                    - value: EBOOK
+                      description: Ebook.
+                    - value: WEBINAR
+                      description: Webinar.
+                    - value: FREE_RESOURCE
+                      description: Free resource.
+                    - value: PODCAST
+                      description: Podcast.
+                    - value: CUSTOM
+                      description: Custom product.
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Product name.
+                  example: NEET Biology 2027
+            - name: source
+              type: enum
+              nullable: true
+              description: For restrictions — automatic (threshold) or by a person. Answers "why" (story 57).
+              example: null
+              enum_values:
+                - value: AUTOMATIC
+                  description: The learner passed the academy's number of confirmed removals — the only automatic step.
+                - value: TEACHER
+                  description: A Teacher or Teaching Assistant restricted the learner from the queue.
+            - name: since
+              type: datetime
+              nullable: false
+              description: '"Since".'
+              example: '2026-09-29T09:00:00Z'
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

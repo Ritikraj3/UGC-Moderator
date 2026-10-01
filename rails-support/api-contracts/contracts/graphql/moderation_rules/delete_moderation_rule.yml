@@ -1,0 +1,86 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Delete Moderation Rule
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Delete Moderation Rule
+  description: |-
+    NEW mutation · Priority P2 · story 22 ("delete a rule they created") · Teacher only.
+    Stops the rule running. Story 22 covers rules the academy created; system rule 2 also talks about a Learnyst
+    rule the academy deletes staying deleted — whether Learnyst rules can be deleted is open question C25.
+    PROPOSED: keep the row soft-deleted so past log entries and reports still name the rule.
+  tags:
+    - moderation
+    - admin
+    - rules
+    - p2
+  side_effects:
+    - deletes_rule
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: DeleteModerationRule
+  input_type: DeleteModerationRuleInput
+  return_type: DeleteModerationRulePayload
+  example_document: |-
+    mutation DeleteModerationRule($input: DeleteModerationRuleInput!) {
+      deleteModerationRule(input: $input) {
+        message
+      }
+    }
+input:
+  fields:
+    - name: rule_id
+      type: id
+      required: true
+      nullable: false
+      description: The rule.
+      example: '51'
+      depends_on:
+        operation: contracts/graphql/moderation_rules/list_moderation_rules
+        field_returned: id
+        pass_as: rule_id
+response:
+  success:
+    http_status: 200
+    description: Deleted.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+  errors:
+    business_errors:
+      - code: RULE_NOT_FOUND
+        http_status: 200
+        graphql_extension_code: RULE_NOT_FOUND
+        field: rule_id
+        message: This rule no longer exists.
+        description: No rule with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: LEARNYST_RULE_NOT_DELETABLE
+        http_status: 200
+        graphql_extension_code: LEARNYST_RULE_NOT_DELETABLE
+        field: rule_id
+        message: 'Learnyst rules can be unpublished, not deleted.'
+        description: Story 22 scope — pending C25.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

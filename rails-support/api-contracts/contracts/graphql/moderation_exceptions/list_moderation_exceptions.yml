@@ -1,0 +1,213 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Moderation Exceptions
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Moderation Exceptions
+  description: |-
+    NEW query · Priority P2 · story 14 ("Product, What is different, Set on").
+    Every product set differently from the academy. Most academies have none (spec — Scope).
+  tags:
+    - moderation
+    - admin
+    - exceptions
+    - p2
+  side_effects: []
+  idempotent: true
+graphql:
+  operation_type: query
+  operation_name: ListModerationExceptions
+  return_type: ModerationExceptionConnection
+  example_document: |-
+    query ListModerationExceptions($first: Int, $after: String) {
+      listModerationExceptions(first: $first, after: $after) {
+        nodes {
+          id
+          product { id type name }
+          contentReviewMode
+          moderationMode
+          disabledRules { id number name }
+          setOn
+        }
+        pageInfo { endCursor hasNextPage }
+        totalCount
+      }
+    }
+input:
+  fields:
+    - name: first
+      type: integer
+      required: false
+      nullable: false
+      description: 'Page size, as on existing Learnyst list queries.'
+      example: 20
+      default: 20
+      min_value: 1
+      max_value: 100
+    - name: after
+      type: string
+      required: false
+      nullable: true
+      description: Cursor from page_info.end_cursor of the previous page.
+      example: null
+      default: null
+      min_length: 1
+response:
+  success:
+    http_status: 200
+    description: 'Exceptions, newest first.'
+    fields:
+      - name: nodes
+        type: array
+        nullable: false
+        description: Exceptions.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: Exception id.
+              example: '7'
+              read_only: true
+            - name: product
+              type: object
+              nullable: false
+              description: '"Product" — the one product set differently.'
+              example:
+                id: '314'
+                type: COURSE
+                name: NEET Biology 2027
+              fields:
+                - name: id
+                  type: id
+                  nullable: false
+                  description: Product id.
+                  example: '314'
+                  read_only: true
+                - name: type
+                  type: enum
+                  nullable: false
+                  description: Product type.
+                  example: COURSE
+                  enum_values:
+                    - value: COURSE
+                      description: Course.
+                    - value: BATCH
+                      description: Batch.
+                    - value: BUNDLE
+                      description: Bundle.
+                    - value: MOCK_TEST
+                      description: Mock test.
+                    - value: TEST_SERIES
+                      description: Test series.
+                    - value: EBOOK
+                      description: Ebook.
+                    - value: WEBINAR
+                      description: Webinar.
+                    - value: FREE_RESOURCE
+                      description: Free resource.
+                    - value: PODCAST
+                      description: Podcast.
+                    - value: CUSTOM
+                      description: Custom product.
+                - name: name
+                  type: string
+                  nullable: false
+                  description: Product name.
+                  example: NEET Biology 2027
+            - name: content_review_mode
+              type: enum
+              nullable: true
+              description: Overrides the academy's content review mode for this product. Null = follows the academy.
+              example: REVIEW_FIRST
+              enum_values:
+                - value: REVIEW_FIRST
+                  description: Content is held until the verdict arrives. Default.
+                - value: PUBLISH_FIRST
+                  description: Content goes live at once and comes down if it breaks a rule.
+            - name: moderation_mode
+              type: enum
+              nullable: true
+              description: Overrides the academy's moderation mode for this product. Null = follows the academy.
+              example: null
+              enum_values:
+                - value: AUTOPILOT
+                  description: The rule's action is applied automatically.
+                - value: COPILOT
+                  description: Nothing is stopped automatically; flagged content waits for a person.
+                - value: AI_DISABLED
+                  description: The AI never runs. Blocked words and learner reports only.
+            - name: disabled_rules
+              type: array
+              nullable: false
+              description: 'Rules switched off for this product (stories 11–12). An exception can switch a rule off, never create one (system rule 6).'
+              example: []
+              items:
+                type: object
+                fields:
+                  - name: id
+                    type: id
+                    nullable: false
+                    description: Rule id.
+                    example: '42'
+                    read_only: true
+                  - name: number
+                    type: integer
+                    nullable: false
+                    description: Rule number.
+                    example: 9
+                  - name: name
+                    type: string
+                    nullable: false
+                    description: Rule name.
+                    example: No promoting other academies
+            - name: set_on
+              type: datetime
+              nullable: false
+              description: '"Set on" — so a setting made months ago is not forgotten (story 14). "What is different" is composed from the three fields above.'
+              example: '2026-05-02T10:00:00Z'
+      - name: page_info
+        type: object
+        nullable: false
+        description: 'Cursor pagination, same shape as listCommunityPosts today (system rule 17: every listing is paginated).'
+        example:
+          end_cursor: MjA
+          has_next_page: true
+        fields:
+          - name: end_cursor
+            type: string
+            nullable: true
+            description: Pass as `after` to fetch the next page.
+            example: MjA
+          - name: has_next_page
+            type: boolean
+            nullable: false
+            description: Whether another page exists.
+            example: true
+      - name: total_count
+        type: integer
+        nullable: false
+        description: Total rows matching the filters.
+        example: 57
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.

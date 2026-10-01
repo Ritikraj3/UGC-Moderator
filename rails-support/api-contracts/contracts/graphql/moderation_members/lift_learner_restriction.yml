@@ -1,0 +1,79 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Lift Learner Restriction
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Lift Learner Restriction
+  description: |-
+    NEW mutation · Priority P1 · story 58 · Restrictions & bans is the list and the undo (system rule 20).
+    The learner can post normally again. Stories list this for the Teacher.
+  tags:
+    - moderation
+    - admin
+    - restrictions
+    - p1
+  side_effects:
+    - lifts_restriction
+    - writes_moderation_log
+  idempotent: true
+graphql:
+  operation_type: mutation
+  operation_name: LiftLearnerRestriction
+  input_type: LiftLearnerRestrictionInput
+  return_type: LiftLearnerRestrictionPayload
+  example_document: |-
+    mutation LiftLearnerRestriction($input: LiftLearnerRestrictionInput!) {
+      liftLearnerRestriction(input: $input) {
+        message
+      }
+    }
+input:
+  fields:
+    - name: user_id
+      type: id
+      required: true
+      nullable: false
+      description: The learner.
+      example: '9001'
+      depends_on:
+        operation: contracts/graphql/moderation_queue/list_moderation_queue_items
+        field_returned: learner
+        pass_as: user_id
+        ui_hint: learner.id of a queue item or member row.
+response:
+  success:
+    http_status: 200
+    description: Lifted.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: 'Confirmation text, as other Learnyst admin mutations return.'
+        example: Done.
+  errors:
+    business_errors:
+      - code: NOT_RESTRICTED
+        http_status: 200
+        graphql_extension_code: NOT_RESTRICTED
+        field: user_id
+        message: This learner is not restricted.
+        description: No active restriction.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 200
+        graphql_extension_code: UNAUTHORIZED
+        message: Please sign in again.
+        description: No valid admin session token.
+      - code: FORBIDDEN
+        http_status: 200
+        graphql_extension_code: FORBIDDEN
+        message: Only a Teacher can do this.
+        description: 'Caller is not a Teacher / Admin of this academy. Teaching Assistants cannot change settings or rules, or ban (stories list these as Teacher-only; spec: "Who can ban? Teachers only").'
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 200
+        graphql_extension_code: INTERNAL_SERVER_ERROR
+        message: Something went wrong. Please try again.
+        description: Unhandled Rails exception.
