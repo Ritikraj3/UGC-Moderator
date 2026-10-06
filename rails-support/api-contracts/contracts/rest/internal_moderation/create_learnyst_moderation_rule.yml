@@ -1,0 +1,175 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Create Learnyst Moderation Rule (Learnyst Monitor → Rails)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Create Learnyst Moderation Rule (Learnyst Monitor → Rails)
+  description: |-
+    Priority P1 · SR 1 · HLD §13 · NEW Rails endpoint, internal host, /internal/v1 namespace.
+    Adds a Learnyst standard rule from the Learnyst Monitor (AI Operations → Moderation Rules). Same fields as an
+    academy rule (create_moderation_rule) plus is_self_harm, which only Learnyst sets (row 78). Saved as a draft or
+    published straight away. A published rule applies to every academy and only to content posted from then on
+    (spec — Rules, Lifecycle: forward only). It applies to every academy at once — no per-academy copies.
+    Rails writes it to moderation_rules with source = learnyst — always; the Monitor cannot create an academy rule
+    (one table, decision 2026-10-06). Rails assigns id and number, and records the token's email as updated_by and in
+    the record (SR 11).
+    Auth: the Monitor's HS256 JWT (shared `monitor-token-key`, scope "monitor") — see list_learnyst_moderation_rules.
+  tags:
+    - moderation
+    - service-to-service
+    - monitor-calls-rails
+    - rules
+    - p1
+  side_effects:
+    - creates_learnyst_rule
+    - writes_moderation_log
+  idempotent: false
+rest:
+  method: POST
+  path: /internal/v1/moderation/learnyst_rules
+  auth: bearer_token
+input:
+  fields:
+    - name: name
+      type: string
+      required: true
+      nullable: false
+      description: Rule name.
+      example: No spam or advertising
+      min_length: 1
+      max_length: 200
+    - name: description
+      type: string
+      required: true
+      nullable: false
+      description: What it means, in plain English. The AI checks content against exactly this.
+      example: No promotions, advertising or selling of any kind.
+      min_length: 1
+      max_length: 2000
+    - name: action
+      type: enum
+      required: true
+      nullable: false
+      description: What happens when it is broken.
+      example: block
+      enum_values:
+        - value: guidance
+          description: Goes live. The learner gets a gentle note.
+        - value: report
+          description: Goes live and into the queue. The learner is told nothing.
+        - value: hold
+          description: Held for review. The learner is told which rule it is being checked against.
+        - value: block
+          description: Not posted, not queued. The learner is told the rule, and why.
+    - name: ai_check_enabled
+      type: boolean
+      required: true
+      nullable: false
+      description: Checked by AI. Off → only the blocked words are checked. Off with no blocked words → the rule is only a report reason.
+      example: true
+    - name: pinned_to_copilot
+      type: boolean
+      required: true
+      nullable: false
+      description: Content that breaks it always goes to the queue, even on Autopilot.
+      example: false
+    - name: is_self_harm
+      type: boolean
+      required: true
+      nullable: false
+      description: The self-harm rule. Learners are never told its name. The Monitor turns pinned_to_copilot on when this is switched on.
+      example: false
+    - name: report_reason
+      type: string
+      required: false
+      nullable: true
+      description: The wording learners see when they report content or their content is stopped.
+      example: Spam or advertising
+      default: null
+      max_length: 200
+    - name: blocked_words
+      type: array
+      required: true
+      nullable: false
+      description: Words and web addresses for this rule. Rails decides which each one is and matches them itself (HLD §4); a match stops content on sight, with no AI check.
+      example:
+        - buy now
+      min_items: 0
+      items:
+        type: string
+        max_length: 255
+    - name: status
+      type: enum
+      required: true
+      nullable: false
+      description: Save as draft, or publish now.
+      example: draft
+      enum_values:
+        - value: draft
+          description: Saved, not applied.
+        - value: published
+          description: Applied to every academy, for content posted from now on.
+response:
+  success:
+    http_status: 201
+    description: The rule as saved — the same shape as one entry of list_learnyst_moderation_rules.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: Confirmation for logs.
+        example: Rule saved.
+        max_length: 200
+      - name: rule
+        type: object
+        nullable: false
+        description: The saved rule (see list_learnyst_moderation_rules for every field).
+        example: {}
+        fields:
+          - name: id
+            type: id
+            nullable: false
+            description: The new rule.
+            example: '10'
+          - name: number
+            type: integer
+            nullable: false
+            description: Next number in creation order.
+            example: 10
+            min_value: 1
+          - name: status
+            type: enum
+            nullable: false
+            description: As sent.
+            example: draft
+            enum_values:
+              - value: draft
+                description: Saved, not applied.
+              - value: published
+                description: Applied to every academy.
+  errors:
+    validation_errors:
+      - code: INVALID_INPUT
+        http_status: 422
+        message: Rule failed validation.
+        description: A required field is missing or a limit is exceeded. The Monitor validates the same limits first and shows the message.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 401
+        message: Invalid monitor token.
+        description: See list_learnyst_moderation_rules.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: Rails error.
+        description: Nothing is saved; the Monitor shows the error.
+ai_hints:
+  test_scenarios:
+    - name: draft_does_nothing
+      description: A rule created as draft is not given to any academy and checks nothing.
+    - name: published_is_forward_only
+      description: Publishing never re-checks content already up.
+    - name: editor_recorded
+      description: updated_by equals the token's email, and the creation is in the record.

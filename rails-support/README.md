@@ -99,7 +99,7 @@ This is the section to read first. Each "existing" line was checked in code, exc
 | N8 | **`moderation_status` + `content_version`** on Post, NewsfeedPost, DiscussionBoard and Comment, plus author-only notice data | HLD §10 (content_version), §13 ("Held content — a real row, visible only to its author") |
 | N9 | **Read-path filtering** on every list and detail read, nested comments included | HLD §13, stories 72, 73, 76 |
 | N10 | **Rules**: CRUD, publish and unpublish, pin to Copilot, report reason, numbering in creation order, the self-harm marker | spec "Rules", stories 17–25, 30–32, 34 |
-| N11 | **Blocked words on rules**: CRUD, "added by", and remembering deleted Learnyst defaults | spec, stories 26–29, 33, SR 2 |
+| N11 | **Blocked words on rules**: CRUD on the academy's own rules, "added by". Learnyst words are read-only for academies (decision 2026-10-06) | spec, stories 26–29, 33 |
 | N12 | **Seeding the Learnyst defaults**: the ready-made rules (nine or ten, C1) and the blocked-word list with romanised Hindi and regional terms | spec, SR 1 |
 | N13 | **Settings**: master switch, four areas, both modes, academy description, thresholds, and holding first posts | spec "Settings", stories 2–9 |
 | N14 | **Exceptions**: one product set differently, with rules switched off per product | stories 10–15, SR 5, SR 6 |
@@ -303,8 +303,9 @@ enough for ai-server's counters is C8.
 - **`examples[]`** holds decided items marked as examples (A5).
 - **Rules apply going forward.** Publishing or rewording a rule never re-checks existing content. The admin
   app shows that warning (story 24, SR 4).
-- **Deleted Learnyst defaults stay deleted** when Learnyst updates the defaults (SR 2). Rails has to remember
-  the deletion, not just drop the row.
+- **Learnyst rules are read-only for academies** (decision 2026-10-06; replaces SR 2 and the spec's "reword,
+  re-action, switch off" for Learnyst rules). Only Learnyst changes them, from the Learnyst Monitor. Each is one
+  row shared by every academy, so a Learnyst edit applies everywhere at once — nothing to copy or remember per academy.
 
 ### 4.9 Reports and the record
 
@@ -346,9 +347,8 @@ The four models are `Post`, `NewsfeedPost`, `DiscussionBoard` and `Comment`.
 | `moderation_settings` | One row per academy: `enabled`; the four area switches; `content_review_mode` (default review first); `moderation_mode`; `academy_description`, `learner_age_group`, `tone_of_conversation`; `removals_before_restriction`; `repeated_post_count`, `repeated_post_window_minutes`; `hold_first_posts_enabled`, `hold_first_posts_count`; `enforcement_enabled` (Learnyst only) | spec "Settings", stories 2–9, HLD §17. Defaults are C23 |
 | `moderation_exceptions` | `product_type`, `product_id`, `content_review_mode` (null = follow), `moderation_mode` (null = follow) | stories 10, 14, 15 |
 | `moderation_exception_rules` | `exception_id`, `rule_id`: rules switched off for that product | stories 11–13, SR 6 |
-| `moderation_rules` | `number` (creation order), `name`, `description`, `action`, `ai_check_enabled`, `pinned_to_copilot`, `report_reason`, `status` (draft/published), `source` (learnyst/academy), `default_key` (Learnyst seed id), `is_self_harm`, `published_at`, `deleted_at` | spec "Rules", stories 17–25, 30–31, 34, SR 9 |
-| `moderation_blocked_words` | `rule_id`, `value`, `normalized_value`, `kind` (word/web address), `added_by` (learnyst/academy), `default_key` | spec, stories 26–29 |
-| `moderation_deleted_defaults` | `school_id`, `default_key`, `kind` (rule/word) | SR 2: a deleted Learnyst default stays deleted through default updates |
+| `moderation_rules` | `number` (creation order), `name`, `description`, `action`, `ai_check_enabled`, `pinned_to_copilot`, `report_reason`, `status` (draft/published), `source` (learnyst/academy), `is_self_harm`, `published_at`, `deleted_at` | spec "Rules", stories 17–25, 30–31, 34, SR 9 |
+| `moderation_blocked_words` | `rule_id`, `value`, `normalized_value`, `kind` (word/web address), `added_by` (learnyst/academy) | spec, stories 26–29 |
 | `moderation_checks` | `request_id` (unique), content ref, `content_version`, `trigger`, `state` (pending/ok/error/unchecked), `deadline_at`, verdict fields (`breaks_rule`, `rule_id`, `reason`, `confidence`, `model`, `latency_ms`), `received_at` | HLD §9 (deadlines), §10 (dedupe), §16 ("a row it created") |
 | `moderation_items` | The queue: content ref and version, `content_area`, product ref, author, `stop_source`, `rule_id`, AI `reason`, `status` (pending/approved/removed), `edited_after_held`, `waiting_since`, `decided_by`, `decided_at`, `is_example`, `check_id` | spec "The review queue", stories 36–46, HLD §8 |
 | `content_reports` | Content ref, `reporter_id`, `rule_id`, `note`, `moderation_item_id` | HLD §7, §13, story 80 |
@@ -356,14 +356,20 @@ The four models are `Post`, `NewsfeedPost`, `DiscussionBoard` and `Comment`.
 | `moderation_restrictions` | `user_id`, `source` (automatic/teacher), `restricted_by`, `restricted_at`, `lifted_at` | stories 47, 55, 58, SR 10, 13 |
 | `moderation_bans` | `user_id`, `scope` (product/academy), product ref, `banned_by`, `banned_at`, `lifted_at` | stories 48–50, 59, SR 13, 14, 19 |
 
-All tables are scoped by `school_id` (HLD §16: academy scoping is Rails' job). The record of actions extends
+**Decision 2026-10-06: Learnyst's rules and academy rules share the one `moderation_rules` table, separated by the
+`source` enum (`learnyst` / `academy`), the same enum the admin contracts return.** The Learnyst team edits the
+`learnyst` rows from the Learnyst Monitor (M1–M5); academies edit only their `academy` rows. Their blocked words sit in
+`moderation_blocked_words` the same way (`added_by`). Academies can never change a Learnyst rule or word, so there are
+no per-academy copies: each Learnyst rule is one row shared by every academy.
+
+All tables are scoped by `school_id` (HLD §16: academy scoping is Rails' job), except the shared Learnyst rows above. The record of actions extends
 PaperTrail (HLD §8); rule, word and settings changes need it too (C10, C28).
 
 ---
 
 ## 6. Every API: in order, with its contract
 
-58 contract files: 48 are P1, 9 are P2, and one is an unchanged reference.
+63 contract files: 53 are P1, 9 are P2, and one is an unchanged reference.
 
 ### A. Service to service (Rails ↔ ai-server): 3, all P1
 
@@ -372,6 +378,23 @@ PaperTrail (HLD §8); rule, word and settings changes need it too (C10, C28).
 | A1 | `POST /api/moderation/check` → 202 `{ status, request_id }` | Rails → ai-server | [`submit_moderation_check`](api-contracts/contracts/rest/ai_server_moderation/submit_moderation_check.yml) |
 | A2 | `POST /internal/v1/moderation/result` → 200 | ai-server → **Rails (new endpoint)** | [`receive_moderation_result`](api-contracts/contracts/rest/internal_moderation/receive_moderation_result.yml) |
 | A3 | `POST /api/moderation/outcome` | Rails → ai-server | [`submit_moderation_outcome`](api-contracts/contracts/rest/ai_server_moderation/submit_moderation_outcome.yml) |
+
+### A·M. Learnyst Monitor → Rails: Learnyst's standard rules (5, all P1, new endpoints)
+
+Decision 2026-10-05: the Learnyst team manages Learnyst's standard rules on the Learnyst Monitor (AI Operations →
+Moderation Rules). Rails holds them like every rule and blocked word (HLD §13), matches their blocked words itself
+(HLD §4), and sends them to ai-server inside each check's `rules`. The Monitor only proxies, with a short-lived
+monitor-scoped JWT signed with the shared `monitor-token-key` that carries the editor's email. They read and write only
+`moderation_rules` rows with `source = learnyst` (§5b); an academy rule is never visible or editable through them.
+A change applies to every academy at once.
+
+| # | Call | Contract |
+|---|---|---|
+| M1 | `GET /internal/v1/moderation/learnyst_rules` | [`list_learnyst_moderation_rules`](api-contracts/contracts/rest/internal_moderation/list_learnyst_moderation_rules.yml) |
+| M2 | `POST /internal/v1/moderation/learnyst_rules` | [`create_learnyst_moderation_rule`](api-contracts/contracts/rest/internal_moderation/create_learnyst_moderation_rule.yml) |
+| M3 | `PUT /internal/v1/moderation/learnyst_rules/{id}`: edit, publish, unpublish | [`update_learnyst_moderation_rule`](api-contracts/contracts/rest/internal_moderation/update_learnyst_moderation_rule.yml) |
+| M4 | `DELETE /internal/v1/moderation/learnyst_rules/{id}` | [`delete_learnyst_moderation_rule`](api-contracts/contracts/rest/internal_moderation/delete_learnyst_moderation_rule.yml) |
+| M5 | `POST /internal/v1/moderation/learnyst_rules/test`: dry run, AI half blocked on C19 | [`test_learnyst_moderation_rule`](api-contracts/contracts/rest/internal_moderation/test_learnyst_moderation_rule.yml) |
 
 ### B. Learner: existing APIs that change (13, all P1). Same names and inputs
 
@@ -487,8 +510,10 @@ not be enough for the "missed" and per-action counters.
 - [ ] A restricted learner is always held, whatever the mode (SR 16)
 - [ ] Removed content kept 90 days, then purged. Restore refused after that (SR 12)
 - [ ] A blocked post leaves a record that is never a post and never restorable (spec)
-- [ ] A deleted Learnyst default stays deleted through default updates (SR 2)
-- [ ] Seed the Learnyst rules (published) and blocked words (active) for every new academy (SR 1; how many rules is C1)
+- [ ] Academies can't edit, publish, unpublish or delete a Learnyst rule or word: `LEARNYST_RULE_READ_ONLY` / `LEARNYST_WORD_READ_ONLY` (decision 2026-10-06)
+- [ ] Every academy gets the published Learnyst rules and words automatically: shared rows, no per-academy seeding (SR 1; how many rules is C1)
+- [ ] Learnyst rules are edited only from the Learnyst Monitor (M1–M5): verify the monitor token, record the editor's email (SR 11)
+- [ ] M1–M5 touch only `source = learnyst` rows: an academy rule id answers 404, and M2 always creates `source = learnyst` (one table, decision 2026-10-06)
 - [ ] Every action, rule change, mode change and word-list edit goes into the record (spec, SR 11)
 - [ ] The outcome call is fire and forget, and never blocks a decision (HLD §10)
 - [ ] Shadow mode and pilot via a per-academy enforcement flag (HLD §17)
@@ -513,7 +538,7 @@ All of these are in [`../open-items.md`](../open-items.md). The ones that block 
 | **C22** | When catchup re-submits happen | N7 |
 | **C23** | Defaults: moderation mode, removal threshold, repeated-post count and window, first-posts count, AI checking on new rules | settings |
 | **C24** | Who owns the self-harm support message and helpline text | notices |
-| **C25** | Can a Learnyst rule be deleted (story 22 vs SR 2)? | `deleteModerationRule` |
+| **C25** | ~~Can a Learnyst rule be deleted?~~ **Decided 2026-10-06: no** — academies can't change Learnyst rules at all | `deleteModerationRule` |
 | **C27** | Is a post's `attachment_url` moderated? | gate, A1 |
 | **C29** | Counts, staff views, learner deletes, editing removed or blocked content | reads |
 | **C30** | The existing `banCommunityMember` vs the new scoped bans | bans |

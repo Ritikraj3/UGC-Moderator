@@ -1,0 +1,167 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Test Learnyst Moderation Rule (Learnyst Monitor → Rails)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Test Learnyst Moderation Rule (Learnyst Monitor → Rails)
+  description: |-
+    Priority P1 · row 32 · spec "Test before publishing" · NEW Rails endpoint, internal host, /internal/v1
+    namespace · BLOCKED ON C19 for the AI half — the same as the academy's test_moderation_rule.
+    The Learnyst Monitor sends the rule as it is in the editor, saved or not, plus a sample post, and sees whether
+    the rule catches it. The blocked-word half runs locally in Rails' matcher (HLD §4) and answers at once. The
+    AI half has no path in the HLD (no synchronous check, HLD §18): until C19 is decided, ai_verdict is null and
+    ai_check_status says why. Nothing is stored and no learner is affected.
+    Auth: the Monitor's JWT — see list_learnyst_moderation_rules.
+  tags:
+    - moderation
+    - service-to-service
+    - monitor-calls-rails
+    - rules
+    - p1
+    - blocked-on-open-question
+  side_effects: []
+  idempotent: true
+rest:
+  method: POST
+  path: /internal/v1/moderation/learnyst_rules/test
+  auth: bearer_token
+input:
+  fields:
+    - name: rule
+      type: object
+      required: true
+      nullable: false
+      description: The rule as it is in the Monitor's editor — need not be saved.
+      example: {}
+      fields:
+        - name: name
+          type: string
+          required: true
+          nullable: false
+          description: Rule name.
+          example: No sharing phone numbers, emails or outside links
+          max_length: 200
+        - name: description
+          type: string
+          required: true
+          nullable: false
+          description: What it means — what the AI half would check against.
+          example: No phone numbers, email addresses or outside links.
+          max_length: 2000
+        - name: ai_check_enabled
+          type: boolean
+          required: true
+          nullable: false
+          description: Off → only the blocked words are tested, and ai_check_status is ai_check_off.
+          example: true
+        - name: blocked_words
+          type: array
+          required: true
+          nullable: false
+          description: The words and web addresses to match, as in the editor.
+          example:
+            - whatsapp
+          min_items: 0
+          items:
+            type: string
+            max_length: 255
+    - name: text
+      type: string
+      required: true
+      nullable: false
+      description: The sample post. Synthetic text typed by a Learnyst member; never stored.
+      example: Call me on WhatsApp for notes
+      min_length: 1
+      max_length: 5000
+response:
+  success:
+    http_status: 200
+    description: What the rule would have done to the sample post.
+    fields:
+      - name: word_matches
+        type: array
+        nullable: false
+        description: Every blocked word that matched, with the text it matched, including disguises (HLD §3).
+        example: []
+        items:
+          type: object
+          fields:
+            - name: word
+              type: string
+              nullable: false
+              description: The blocked word or web address.
+              example: whatsapp
+              max_length: 255
+            - name: matched_text
+              type: string
+              nullable: false
+              description: The text in the sample that matched it.
+              example: WhatsApp
+              max_length: 255
+      - name: ai_check_status
+        type: enum
+        nullable: false
+        description: Whether the AI half ran.
+        example: not_available
+        enum_values:
+          - value: checked
+            description: The AI checked it — read ai_verdict.
+          - value: ai_check_off
+            description: AI checking is off for this rule.
+          - value: not_available
+            description: No AI path yet (C19) — only blocked words were checked.
+      - name: ai_verdict
+        type: object
+        nullable: true
+        description: Null unless ai_check_status is checked.
+        example: null
+        fields:
+          - name: breaks_rule
+            type: boolean
+            nullable: false
+            description: Whether the sample breaks the rule.
+            example: true
+          - name: reason
+            type: string
+            nullable: true
+            description: One or two sentences — why.
+            example: The post shares a phone number to move learners off the academy.
+            max_length: 200
+          - name: confidence
+            type: enum
+            nullable: true
+            description: How sure the model is.
+            example: high
+            enum_values:
+              - value: low
+                description: Low confidence.
+              - value: medium
+                description: Medium confidence.
+              - value: high
+                description: High confidence.
+  errors:
+    validation_errors:
+      - code: INVALID_INPUT
+        http_status: 422
+        message: Test input failed validation.
+        description: Empty sample text or a limit exceeded.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 401
+        message: Invalid monitor token.
+        description: See list_learnyst_moderation_rules.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: Rails error.
+        description: The Monitor shows the error in the Test tab.
+ai_hints:
+  test_scenarios:
+    - name: disguised_word
+      description: '"W h a t s A p p" matches the blocked word whatsapp (HLD §3 disguises).'
+    - name: ai_off
+      description: ai_check_enabled false → ai_check_status ai_check_off, ai_verdict null.
+    - name: nothing_stored
+      description: No content, queue item or record row is written.

@@ -7,7 +7,7 @@ Each entry needs the owner of the spec, stories or HLD to decide.
 - **Part A:** the HLD's own open items (§19)
 - **Part B:** where the documents disagree (C1–C10)
 - **Part C:** smaller gaps (C11–C19)
-- **Part D:** found while mapping the Rails work against production code (C20–C32) — see [`rails-support/README.md`](rails-support/README.md)
+- **Part D:** found while mapping the Rails work against production code (C20–C33) — see [`rails-support/README.md`](rails-support/README.md)
 
 ---
 
@@ -176,7 +176,7 @@ feeds the reports.
 
 ---
 
-## Part D — Found while mapping the Rails work (C20–C32)
+## Part D — Found while mapping the Rails work (C20–C33)
 
 These came from reading the three documents against the production code (bodhi, admin, ai-server,
 monitor). Each one is stated with its evidence. Where a proposal exists, it is labelled **PROPOSED** in
@@ -189,7 +189,7 @@ monitor). Each one is stated with its evidence. Where a proposal exists, it is l
 | **C22** | **When does Rails send `trigger: catchup`?** Which Unchecked items, how soon after ai-server recovers, and how far back? | HLD §9, §10, §14 (the bulk lane after an outage) |
 | **C23** | **Defaults the sources do not state:** the moderation mode, removals before a restriction, the repeated-post count and window (and the window's unit), the number of first posts to hold, and AI checking on a new rule. Only the content review mode default (review first) and first-posts hold (off) are stated. | Stories 5, 7, 8, 9, 17 · spec — Settings |
 | **C24** | **Who owns the self-harm support message and helpline text**, and for which regions and languages? | Spec: "Fixed message plus a helpline" · HLD §12: "Rails shows its own fixed message and the helpline" · story 78 |
-| **C25** | **Can an academy delete a Learnyst rule?** Story 22 covers "a rule they created". System rule 2 speaks of "a Learnyst rule … the academy deletes". The spec says academies "reword, re-action, switch off". | Story 22 · SR 2 · spec — Rules |
+| **C25** | **Can an academy delete a Learnyst rule?** Story 22 covers "a rule they created". System rule 2 speaks of "a Learnyst rule … the academy deletes". The spec says academies "reword, re-action, switch off". **Decided 2026-10-06:** academies can never edit, unpublish or delete a Learnyst rule or its blocked words. Only Learnyst changes them, from the Learnyst Monitor. Each is one row in Rails' `moderation_rules`, shared by every academy. This replaces SR 2 and the spec's "reword, re-action, switch off" for Learnyst rules. | Story 22 · SR 2 · spec — Rules |
 | **C26** | **The callback token versus the internal http host.** HLD §16 wants a shared service token on the callback. Today's `/internal/v1` Rails callbacks (`/internal/v1/ai_ingest/lesson_result`) are **authless** over the http-only internal gateway, and ai-server deliberately keeps credentials off that plaintext path (CWE-319 comment). Options: https on the internal host, a token over internal http, or network-only as today. | HLD §16 · ai-server `rails-callback.handler.ts`, `constants.ts` |
 | **C27** | **Is a post's `attachment_url` moderated?** HLD §6 lists `posts.featured_image`, `comments.attachment_url` and `comments.image`. Community posts also carry `attachmentUrl`. | HLD §6 · bodhi `CreateCommunityPostInput` |
 | **C28** | **PaperTrail coverage.** HLD §8 says Post and Comment have PaperTrail. DiscussionBoard and NewsfeedPost are not mentioned, but edit history (story 39) and the record need them. | HLD §8, §13 · story 39 |
@@ -197,3 +197,4 @@ monitor). Each one is stated with its evidence. Where a proposal exists, it is l
 | **C30** | **Existing community ban versus the new scoped ban.** `banCommunityMember(IS_PERMITTED \| IS_BANNED)` and `user.communityStatus` ban per community today. The new ban is per product or academy, and "community" is not a product type. Is a community a "product" for ban scope, and what happens to existing bans? | bodhi `BanCommunityMemberRepo` · stories 48–49 · HLD §10 `product_type` list |
 | **C31** | **Which Rails roles are "Teacher / Admin" and "Teaching Assistant"?** Every admin API needs the mapping: Teaching Assistants may view, approve, remove, restore and restrict, but not ban or change settings or rules. | Stories 51–55 · spec: "Who can ban? Teachers only" · SR 18 |
 | **C32** | **Self-harm under publish first.** Rule 5 is Hold and pinned to Copilot by default. Copilot means "nothing is stopped automatically", and publish first + Copilot means "nothing is removed until a person says so". So a self-harm post would stay visible until a person acts. Is that intended? | Spec — Rules and two settings · HLD §5 combinations |
+| **C33** | **How a change to a Learnyst rule reaches academies that already have it.** Decision 2026-10-05: the Learnyst team manages Learnyst's standard rules on the Learnyst Monitor (AI Operations → Moderation Rules); Rails holds them. The sources say a new academy starts with them (SR 1) and that a rule or word an academy deleted stays deleted through Learnyst updates (SR 2), and academies "reword, re-action, switch off" their copy (spec). They do not say: does an edit, publish, unpublish or delete in the Monitor reach existing academies? Does an edit overwrite a copy the academy already reworded or re-actioned? Does a newly published rule appear in existing academies, and under which number? Decision 2026-10-06 puts Learnyst and academy rules in one `moderation_rules` table, separated by `source`: is a Learnyst rule then one row shared by every academy, and if so, where are an academy's reword, re-action, switch-off and deletion of it kept (SR 2)? **Decided 2026-10-06:** academies can never edit, unpublish or delete a Learnyst rule or its blocked words. Only Learnyst changes them, from the Learnyst Monitor. Each is one row in Rails' `moderation_rules`, shared by every academy. This replaces SR 2 and the spec's "reword, re-action, switch off" for Learnyst rules. | SR 1, SR 2 · spec — Rules · `rails-support/api-contracts/contracts/rest/internal_moderation/*learnyst_moderation_rule*` |

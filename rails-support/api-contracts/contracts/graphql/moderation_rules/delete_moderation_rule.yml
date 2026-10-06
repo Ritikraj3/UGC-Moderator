@@ -8,8 +8,8 @@ operation:
   display_name: Delete Moderation Rule
   description: |-
     NEW mutation · Priority P2 · story 22 ("delete a rule they created") · Teacher only.
-    Stops the rule running. Story 22 covers rules the academy created; system rule 2 also talks about a Learnyst
-    rule the academy deletes staying deleted — whether Learnyst rules can be deleted is open question C25.
+    Stops the rule running. The academy's own rules only (story 22): an academy can never delete a Learnyst rule
+    (decision 2026-10-06, answers C25).
     PROPOSED: keep the row soft-deleted so past log entries and reports still name the rule.
   tags:
     - moderation
@@ -65,8 +65,8 @@ response:
         http_status: 200
         graphql_extension_code: LEARNYST_RULE_NOT_DELETABLE
         field: rule_id
-        message: 'Learnyst rules can be unpublished, not deleted.'
-        description: Story 22 scope — pending C25.
+        message: 'Learnyst rules can''t be changed by an academy.'
+        description: Learnyst rules are read-only for academies (decision 2026-10-06). Only Learnyst changes them, from the Learnyst Monitor.
     auth_errors:
       - code: UNAUTHORIZED
         http_status: 200

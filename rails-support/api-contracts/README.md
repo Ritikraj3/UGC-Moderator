@@ -1,7 +1,7 @@
 # API contracts: AI UGC Moderation (Rails hand-over)
 
 One YAML file per operation, in the **learnyst-admin `api-contracts` format**
-(`learnyst-admin/admin/api-contracts/docs/template.md`). All 58 pass that repo's validator, which is copied
+(`learnyst-admin/admin/api-contracts/docs/template.md`). All 63 pass that repo's validator, which is copied
 here unchanged. The mental model, the reasoning, and what is new versus existing are in
 [`../README.md`](../README.md). Open questions are in [`../../open-items.md`](../../open-items.md).
 
@@ -10,10 +10,10 @@ here unchanged. The mental model, the reasoning, and what is new versus existing
 ```bash
 cd rails-support/api-contracts
 npm install --prefix validator        # once — installs js-yaml
-node validator/validate.js            # → Summary: 58/58 passed
+node validator/validate.js            # → Summary: 63/63 passed
 ```
 
-Last run on 2026-09-30: **58/58 passed**. In addition, all 55 `example_document`s parse with `graphql`.
+Last run on 2026-10-05: **63/63 passed**. In addition, all 55 `example_document`s parse with `graphql`.
 Operation names and types match each contract, every `$variable` is declared and used, and every query input
 appears as a variable.
 
@@ -38,6 +38,11 @@ appears as a variable.
 | `ai_server_moderation/submit_moderation_check.yml` | Rails → ai-server `POST /api/moderation/check` | P1 |
 | `internal_moderation/receive_moderation_result.yml` | ai-server → Rails `POST /internal/v1/moderation/result` (**new Rails endpoint**) | P1 |
 | `ai_server_moderation/submit_moderation_outcome.yml` | Rails → ai-server `POST /api/moderation/outcome` | P1 |
+| `internal_moderation/list_learnyst_moderation_rules.yml` | Learnyst Monitor → Rails `GET /internal/v1/moderation/learnyst_rules` (**new**) | P1 |
+| `internal_moderation/create_learnyst_moderation_rule.yml` | Learnyst Monitor → Rails `POST /internal/v1/moderation/learnyst_rules` (**new**) | P1 |
+| `internal_moderation/update_learnyst_moderation_rule.yml` | Learnyst Monitor → Rails `PUT /internal/v1/moderation/learnyst_rules/{id}` (**new**; also publish / unpublish) | P1 |
+| `internal_moderation/delete_learnyst_moderation_rule.yml` | Learnyst Monitor → Rails `DELETE /internal/v1/moderation/learnyst_rules/{id}` (**new**) | P1 |
+| `internal_moderation/test_learnyst_moderation_rule.yml` | Learnyst Monitor → Rails `POST /internal/v1/moderation/learnyst_rules/test` (**new**; AI half blocked on C19) | P1 |
 
 ### Learner: existing APIs that change: `contracts/graphql/`
 
@@ -82,8 +87,8 @@ appears as a variable.
 `_reference/show_community.yml` (`showCommunity`) is here only as the documented source of `community_id`,
 which the validator requires.
 
-**Totals:** 58 files = 3 service + 13 changed + 3 learner-new + 38 admin-new + 1 reference.
-48 are P1 and 9 are P2.
+**Totals:** 63 files = 8 service (3 Rails ↔ ai-server + 5 Learnyst Monitor → Rails) + 13 changed + 3 learner-new + 38 admin-new + 1 reference.
+53 are P1 and 9 are P2.
 
 ## Note for the bodhi side
 

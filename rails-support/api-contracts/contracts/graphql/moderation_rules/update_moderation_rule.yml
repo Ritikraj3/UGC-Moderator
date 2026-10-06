@@ -8,8 +8,9 @@ operation:
   display_name: Update Moderation Rule
   description: |-
     NEW mutation · Priority P1 · stories 20, 21, 30, 31, 34 · Teacher only.
-    Reword, re-action, switch AI checking, pin to Copilot, change the report reason — including Learnyst's own
-    rules (story 21). Rewording a published rule never re-checks posts already up; the admin app shows the
+    Reword, re-action, switch AI checking, pin to Copilot, change the report reason — the academy's own rules only.
+    A Learnyst rule answers LEARNYST_RULE_READ_ONLY (decision 2026-10-06; replaces story 21's "including Learnyst's").
+    Rewording a published rule never re-checks posts already up; the admin app shows the
     warning before calling (story 24, system rule 4). Rule changes never need an ai-server deploy (HLD §18).
   tags:
     - moderation
@@ -248,6 +249,12 @@ response:
         field: rule_id
         message: This rule no longer exists.
         description: No rule with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: LEARNYST_RULE_READ_ONLY
+        http_status: 200
+        graphql_extension_code: LEARNYST_RULE_READ_ONLY
+        field: rule_id
+        message: "Learnyst rules can't be changed by an academy."
+        description: Learnyst rules are read-only for academies (decision 2026-10-06). Only Learnyst changes them, from the Learnyst Monitor.
     auth_errors:
       - code: UNAUTHORIZED
         http_status: 200

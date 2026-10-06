@@ -11,6 +11,8 @@ received 2026-09-30.
 | [`stories/`](stories/README.md) | **User Stories** — 78 stories, 20 system rules, glossary | — |
 | [`hld/`](hld/README.md) | **HLD: AI Moderation for Community Content** | "Design: HLD" |
 | [`rails-support/`](rails-support/README.md) | **Rails hand-over**, built from the three documents plus the production code: what already exists and what is new, every API in sequence, new fields and why, and 58 validated API contracts | — |
+| [`ai-server-plan/`](ai-server-plan/README.md) | **ai-server build plan** (PROPOSED v2): what the AI backend builds before Rails is ready, to the approved HLD — the three calls tested with Postman and a dev-only Rails stub, Learnyst default rules and words, evals, a 30-SP task split, and a slot for JEV if it is approved | — |
+| [`admin-ui-plan/`](admin-ui-plan/README.md) | **Admin UI plan** (PROPOSED v1): the five admin screens (queue, rules, settings, restrictions & bans, reports) built in `learnyst-admin` before Rails is ready — page routes, file layout, which admin framework each screen uses, a dev-only mock layer that serves hardcoded data through the real contract queries, the contract changes the table framework needs, and a 30-SP task split | — |
 
 The spec also links **Market Research**. That document is not in this folder.
 
@@ -26,7 +28,7 @@ files below are the detail behind it.
 1. **Source wording only** in `spec/`, `stories/` and `hld/`. Each file starts with a `Source:` line naming its
    section. Text is kept as written; tables and diagrams are rebuilt where the copy flattened them.
 2. **Cite stories by page row number.** Rows 1, 16, 35, 56, 60, 69 and 81 are section headers.
-3. **Only `rails-support/` proposes anything.** Every proposal there is labelled **PROPOSED** and cites its source.
+3. **Only `rails-support/`, `ai-server-plan/` and `admin-ui-plan/` propose anything.** Every proposal there is labelled **PROPOSED** and cites its source.
    The two root files ([`traceability.md`](traceability.md), [`open-items.md`](open-items.md)) add no design:
    they only point at, quote and compare the sources.
 4. **A ⚠ note in any file** links to the matching entry in [`open-items.md`](open-items.md), where the documents
@@ -39,6 +41,8 @@ Ai moderator/
 ├── README.md               ← this file
 ├── traceability.md         ← each story → spec section → HLD section; v1 boundary
 ├── open-items.md           ← HLD open items + where the three documents disagree (C1–C32)
+├── ai-server-plan/         ← ai-server build plan (PROPOSED)
+├── admin-ui-plan/          ← admin screens build plan (PROPOSED)
 ├── rails-support/          ← Rails hand-over
 │   ├── README.md                   existing vs new · sequence · data model · new fields · open questions
 │   └── api-contracts/              58 YAML contracts (learnyst-admin format) + validator

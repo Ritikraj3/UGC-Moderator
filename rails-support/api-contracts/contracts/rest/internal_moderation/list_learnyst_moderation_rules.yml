@@ -1,0 +1,168 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# List Learnyst Moderation Rules (Learnyst Monitor → Rails)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: List Learnyst Moderation Rules (Learnyst Monitor → Rails)
+  description: |-
+    Priority P1 · SR 1 · HLD §13 · NEW Rails endpoint, under the /internal/v1 namespace on the internal
+    Rails host (same routing constraint as /internal/v1/moderation/result).
+    Learnyst's standard rules — the defaults every academy starts with (SR 1) — are managed by the Learnyst team
+    on the Learnyst Monitor (AI Operations → Moderation Rules), not per academy (decision 2026-10-05). Rails holds
+    them like every rule and blocked word (HLD §13): one moderation_rules table for Learnyst and academy rules, separated by
+    the source enum (decision 2026-10-06). This lists every row with source = learnyst, drafts included — never an
+    academy rule. The Monitor only proxies.
+    One row per Learnyst rule, shared by every academy; academies can never change it (decision 2026-10-06).
+    Auth: a short-lived HS256 JWT minted by the Monitor with the shared infra secret `monitor-token-key`, payload
+    { email, name, scope: "monitor" }, 60 s expiry. Rails verifies the signature, expiry and scope.
+  tags:
+    - moderation
+    - service-to-service
+    - monitor-calls-rails
+    - rules
+    - p1
+  side_effects: []
+  idempotent: true
+rest:
+  method: GET
+  path: /internal/v1/moderation/learnyst_rules
+  auth: bearer_token
+input:
+  fields:
+    - name: status
+      type: enum
+      required: false
+      nullable: true
+      description: Query filter. Omitted → every Learnyst rule. The Monitor page sends none and filters on screen.
+      example: published
+      default: null
+      enum_values:
+        - value: draft
+          description: Saved, not yet applied to any academy.
+        - value: published
+          description: Applied to every academy.
+response:
+  success:
+    http_status: 200
+    description: Every Learnyst rule, in number order. A short list (SR 1 ships nine or ten, C1), so not paginated.
+    fields:
+      - name: rules
+        type: array
+        nullable: false
+        description: The rules.
+        example: []
+        items:
+          type: object
+          fields:
+            - name: id
+              type: id
+              nullable: false
+              description: The Learnyst rule.
+              example: '6'
+            - name: number
+              type: integer
+              nullable: false
+              description: Numbered in creation order; no reordering, no priority (spec — Rules, Lifecycle).
+              example: 6
+              min_value: 1
+            - name: name
+              type: string
+              nullable: false
+              description: Rule name.
+              example: No spam or advertising
+              max_length: 200
+            - name: description
+              type: string
+              nullable: false
+              description: What it means, in plain English. The AI checks content against exactly this.
+              example: No promotions, advertising or selling of any kind.
+              max_length: 2000
+            - name: action
+              type: enum
+              nullable: false
+              description: What happens when it is broken (spec — Rules, "The four actions").
+              example: block
+              enum_values:
+                - value: guidance
+                  description: Goes live. The learner gets a gentle note.
+                - value: report
+                  description: Goes live and into the queue. The learner is told nothing.
+                - value: hold
+                  description: Held for review. The learner is told which rule it is being checked against.
+                - value: block
+                  description: Not posted, not queued. The learner is told the rule, and why.
+            - name: ai_check_enabled
+              type: boolean
+              nullable: false
+              description: Checked by AI. Off → only the blocked words are checked.
+              example: true
+            - name: pinned_to_copilot
+              type: boolean
+              nullable: false
+              description: Content that breaks it always goes to the queue, even on Autopilot.
+              example: false
+            - name: is_self_harm
+              type: boolean
+              nullable: false
+              description: The self-harm rule (row 78). Learners are never told its name; pinned to Copilot by default.
+              example: false
+            - name: report_reason
+              type: string
+              nullable: true
+              description: The wording learners see when they report content or their content is stopped.
+              example: Spam or advertising
+              max_length: 200
+            - name: blocked_words
+              type: array
+              nullable: false
+              description: Words and web addresses that belong to this rule. Rails matches them itself; a match stops content on sight, with no AI check (HLD §4).
+              example:
+                - buy now
+              items:
+                type: string
+                max_length: 255
+            - name: status
+              type: enum
+              nullable: false
+              description: Draft rules do nothing until published (spec — Rules, Lifecycle).
+              example: published
+              enum_values:
+                - value: draft
+                  description: Saved, not applied.
+                - value: published
+                  description: Applied to every academy.
+            - name: published_at
+              type: datetime
+              nullable: true
+              description: When it was last published. Null for a draft.
+              example: '2026-10-05T09:30:00Z'
+            - name: updated_at
+              type: datetime
+              nullable: false
+              description: Last change.
+              example: '2026-10-05T09:30:00Z'
+            - name: updated_by
+              type: string
+              nullable: true
+              description: Email of the Learnyst member who made the last change — the `email` in the Monitor's token.
+              example: curator@learnyst.com
+              max_length: 255
+  errors:
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 401
+        message: Invalid monitor token.
+        description: Missing, expired, wrongly signed or not scope "monitor". The Monitor shows it as a 502, never as its own sign-out.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: Rails error.
+        description: The Monitor shows "Moderation rules unavailable" and retries on its next poll.
+ai_hints:
+  test_scenarios:
+    - name: drafts_included
+      description: A draft Learnyst rule is listed with status draft; ?status=published leaves it out.
+    - name: wrong_token
+      description: A token signed with any other key, or without scope monitor → 401.

@@ -1,0 +1,78 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Delete Learnyst Moderation Rule (Learnyst Monitor → Rails)
+# AI UGC Moderation — Rails hand-over contract.
+# Format: learnyst-admin api-contracts (docs/template.md); passes validator/validate.js.
+# Explained in: rails-support/README.md · Open questions: open-items.md
+# ──────────────────────────────────────────────────────────────────────────────
+operation:
+  display_name: Delete Learnyst Moderation Rule (Learnyst Monitor → Rails)
+  description: |-
+    Priority P1 · SR 1 · HLD §13 · NEW Rails endpoint, internal host, /internal/v1 namespace.
+    Deletes a Learnyst standard rule (a moderation_rules row with source = learnyst; an academy rule's id answers
+    RULE_NOT_FOUND) and its blocked words from the Learnyst Monitor. It stops applying to
+    every academy at once. Rails records the
+    token's email in the record (SR 11). Auth: the Monitor's JWT — see list_learnyst_moderation_rules.
+  tags:
+    - moderation
+    - service-to-service
+    - monitor-calls-rails
+    - rules
+    - p1
+  side_effects:
+    - deletes_learnyst_rule
+    - writes_moderation_log
+  idempotent: false
+rest:
+  method: DELETE
+  path: /internal/v1/moderation/learnyst_rules/{id}
+  path_params:
+    - name: id
+      type: id
+      description: The Learnyst rule, from list_learnyst_moderation_rules.
+      example: '6'
+  auth: bearer_token
+input:
+  fields:
+    - name: id
+      type: id
+      required: true
+      nullable: false
+      description: The Learnyst rule (the {id} path parameter). The Monitor sends an empty JSON body.
+      example: '6'
+      depends_on:
+        operation: contracts/rest/internal_moderation/list_learnyst_moderation_rules
+        field_returned: id
+        pass_as: id
+response:
+  success:
+    http_status: 200
+    description: Deleted.
+    fields:
+      - name: message
+        type: string
+        nullable: false
+        description: Confirmation for logs.
+        example: Rule deleted.
+        max_length: 200
+  errors:
+    business_errors:
+      - code: RULE_NOT_FOUND
+        http_status: 404
+        message: This rule no longer exists.
+        description: Already deleted, or the id is an academy rule (source = academy), which the Monitor may never delete.
+    auth_errors:
+      - code: UNAUTHORIZED
+        http_status: 401
+        message: Invalid monitor token.
+        description: See list_learnyst_moderation_rules.
+    system_errors:
+      - code: INTERNAL_SERVER_ERROR
+        http_status: 500
+        message: Rails error.
+        description: Nothing is deleted; the Monitor shows the error.
+ai_hints:
+  test_scenarios:
+    - name: words_go_with_rule
+      description: The rule's blocked words are deleted with it.
+    - name: new_academy_after_delete
+      description: An academy created after the delete is not seeded with the rule (SR 1).

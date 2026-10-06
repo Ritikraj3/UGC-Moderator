@@ -8,7 +8,7 @@ operation:
   display_name: Create Moderation Blocked Word
   description: |-
     NEW mutation · Priority P1 · story 26 ("Word or web address*") · Teacher only.
-    Adds a word or web address to a rule. Content containing it is stopped on sight with no AI call, naming the
+    Adds a word or web address to one of the academy's own rules (a Learnyst rule answers LEARNYST_RULE_READ_ONLY). Content containing it is stopped on sight with no AI call, naming the
     same rule as an AI catch would (system rule 7). One entry covers disguises (1d10t, id**t, IDIOT, i d i o t);
     a web address covers its subpages (rivalacademy.com → www.rivalacademy.com/neet). Every edit is logged ("word-list edits").
   tags:
@@ -120,6 +120,12 @@ response:
         field: value
         message: That word is already on this rule.
         description: The normalised value already exists on the rule.
+      - code: LEARNYST_RULE_READ_ONLY
+        http_status: 200
+        graphql_extension_code: LEARNYST_RULE_READ_ONLY
+        field: rule_id
+        message: "Learnyst rules can't be changed by an academy."
+        description: Learnyst rules are read-only for academies (decision 2026-10-06). Only Learnyst changes them, from the Learnyst Monitor.
     auth_errors:
       - code: UNAUTHORIZED
         http_status: 200

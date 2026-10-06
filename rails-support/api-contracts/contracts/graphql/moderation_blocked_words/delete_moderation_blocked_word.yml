@@ -8,8 +8,8 @@ operation:
   display_name: Delete Moderation Blocked Word
   description: |-
     NEW mutation · Priority P1 · story 29 · system rule 2 · Teacher only.
-    Deletes a word, including one provided by Learnyst. A deleted Learnyst word stays deleted for this academy
-    even when Learnyst updates the defaults — Rails must remember the deletion, not just drop the row.
+    Deletes a word from one of the academy's own rules. A Learnyst word answers LEARNYST_WORD_READ_ONLY
+    (decision 2026-10-06; replaces system rule 2 — nothing Learnyst-owned is ever deleted by an academy).
   tags:
     - moderation
     - admin
@@ -61,6 +61,12 @@ response:
         field: word_id
         message: This blocked word no longer exists.
         description: No blocked word with this id in the caller's academy — academy scoping is Rails' job (HLD §16).
+      - code: LEARNYST_WORD_READ_ONLY
+        http_status: 200
+        graphql_extension_code: LEARNYST_WORD_READ_ONLY
+        field: word_id
+        message: "Learnyst blocked words can't be changed by an academy."
+        description: Learnyst rules are read-only for academies (decision 2026-10-06). Only Learnyst changes them, from the Learnyst Monitor.
     auth_errors:
       - code: UNAUTHORIZED
         http_status: 200
